@@ -1,0 +1,43 @@
+# 忽略所有 .log 檔案
+*.log
+
+# 忽略 __pycache__ 資料夾
+__pycache__/
+
+# 忽略所有 .pyc 檔案
+*.pyc
+
+# 忽略 .env 檔（常含敏感資訊）
+.env
+
+# 忽略整個資料夾
+build/
+dist/
+
+# 忽略 VSCode 設定
+.vscode/
+
+# 忽略 macOS 系統自動產生的檔案
+.DS_Store
+
+data/grozi/
+*.jpg
+
+output/
+
+*.csv
+
+*.png
+
+*.ini
+
+*.txt
+
+*.jpg
+
+visualized_images/
+
+
+visualized_images_detection/
+
+*.pth

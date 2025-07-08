@@ -25,8 +25,6 @@ data/grozi/
 
 output/
 
-*.csv
-
 *.png
 
 *.ini

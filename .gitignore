@@ -41,3 +41,7 @@ visualized_images/
 visualized_images_detection/
 
 *.pth
+
+*.tar
+
+*.gz

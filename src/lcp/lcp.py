@@ -481,6 +481,41 @@ class LCP:
         print(f"[After Prune] Reconstruction loss: {rec_loss_after:.6f}")
 
         return rec_loss_before, rec_loss_after
+    def _get_layer_by_name(self, layer_name, net):
+        """
+        根據層名稱獲取層對象
+        
+        Args:
+            layer_name: 層名稱（支持點分割路徑）
+            
+        Returns:
+            torch.nn.Module: 層對象，如果找不到則返回 None
+        """
+        try:
+            # 移除 'net_feature_maps.' 前綴（如果存在）
+            if layer_name.startswith('net_feature_maps.'):
+                layer_path = layer_name.replace('net_feature_maps.', '')
+            else:
+                layer_path = layer_name
+            
+            # 從網路開始遍歷
+            layer = net.net_feature_maps
+            
+            # 按路徑逐級獲取層對象
+            for attr in layer_path.split('.'):
+                if hasattr(layer, attr):
+                    layer = getattr(layer, attr)
+                elif attr.isdigit():
+                    layer = layer[int(attr)]
+                else:
+                    print(f"[ERROR] 無法找到屬性: {attr} in {layer_path}")
+                    return None
+            
+            return layer
+            
+        except Exception as e:
+            print(f"[ERROR] 獲取層 {layer_name} 失敗: {e}")
+            return None
 
     def compute_channel_importance_no_grad(self, layer_name, lambda_rate=1.0, use_image_num=None, random_seed=None):
         """
@@ -488,6 +523,7 @@ class LCP:
         實現統合公式：S_k = w1×L1 + w2×Var + w3×MeanDev + w4×Energy + w5×Sparsity
         """
         print(f"[LCP] 開始基於數學推導的無梯度通道重要性計算 - {layer_name}")
+        
         self._net = self._net.cuda()
         self._prune_net = self._prune_net.cuda()
         # 準備圖像數據
@@ -645,8 +681,9 @@ class LCP:
             
             with torch.no_grad():
                 orig_features = self._extract_layer_features_no_grad(self._net, img_tensor, layer_name)
+                print( "[LOG] 原始網路特徵提取完成")
                 pruned_features = self._extract_layer_features_no_grad(self._prune_net, img_tensor, layer_name)
-            
+                print( "[LOG] 剪枝網路特徵提取完成")
             if orig_features is None:
                 return None
             

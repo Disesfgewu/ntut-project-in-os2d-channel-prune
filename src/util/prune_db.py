@@ -23,23 +23,60 @@ class PruneDBControler:
         
         print(f"檔案 {f} 初始化完成。")
 
-
     def write_data(self, layer, original_channel_num, num_of_keep_channel, keep_index):
-        """寫入剪枝數據到 CSV 檔案"""
-        keep_index = keep_index.tolist()
-        print( keep_index )
-        print( type(keep_index) )
-        print( str(keep_index) )
-        with open(self._path, 'a', newline='', encoding='utf-8') as file:
+        """寫入剪枝數據到 CSV 檔案，如果 layer 已存在則覆蓋"""
+        try:
+            keep_index = keep_index.tolist()
+        except:
+            pass
+        print(keep_index)
+        print(type(keep_index))
+        print(str(keep_index))
+        
+        # 檢查檔案是否存在
+        if not os.path.exists(self._path):
+            # 檔案不存在，創建新檔案
+            with open(self._path, 'w', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                writer.writerow(["layer", "original_channel_num", "num_of_keep_channel", "keep_index"])
+        
+        # 讀取現有數據
+        existing_data = []
+        layer_found = False
+        
+        try:
+            with open(self._path, 'r', newline='', encoding='utf-8') as file:
+                reader = csv.reader(file)
+                header = next(reader)  # 讀取標題行
+                existing_data.append(header)
+                
+                for row in reader:
+                    if row[0] == layer:  # 找到相同的 layer
+                        # 覆蓋該行數據
+                        keep_index_str = str(keep_index) if isinstance(keep_index, list) else str([keep_index])
+                        new_row = [layer, original_channel_num, num_of_keep_channel, keep_index_str]
+                        existing_data.append(new_row)
+                        layer_found = True
+                        print(f"[INFO] 覆蓋現有層級數據: {layer}")
+                    else:
+                        # 保留其他行
+                        existing_data.append(row)
+        
+        except FileNotFoundError:
+            # 檔案不存在的情況已在上面處理
+            pass
+        
+        # 如果沒有找到相同的 layer，添加新記錄
+        if not layer_found:
+            keep_index_str = str(keep_index) if isinstance(keep_index, list) else str([keep_index])
+            new_row = [layer, original_channel_num, num_of_keep_channel, keep_index_str]
+            existing_data.append(new_row)
+            print(f"[INFO] 添加新層級數據: {layer}")
+        
+        # 重寫整個檔案
+        with open(self._path, 'w', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
-            
-            # 直接將 list 轉換為字串格式 [1, 2, 3]
-            if isinstance(keep_index, list):
-                keep_index_str = str(keep_index)
-            else:
-                keep_index_str = str([keep_index])  # 單一值也包裝成 list 格式
-            
-            writer.writerow([layer, original_channel_num, num_of_keep_channel, keep_index_str])
+            writer.writerows(existing_data)
 
     def _get_all_data_by_layer(self, layer) -> Dict:
         """

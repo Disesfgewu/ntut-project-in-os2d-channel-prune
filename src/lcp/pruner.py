@@ -1,6 +1,5 @@
 import torch
 
-
 class Pruner:
     def __init__(self, prune_network):
         self.prune_network = prune_network
@@ -32,18 +31,20 @@ class Pruner:
         self._prune_out_channel(layer_name, keep_indices)
         
         # 4. 剪枝對應的 BatchNorm 層
-        if dependencies.get('bn_layer'):
-            self._prune_batchnorm_layer(dependencies['bn_layer'], keep_indices)
-        
+        if dependencies.get('batch_norm'):
+            self._prune_batchnorm_layer(dependencies['batch_norm'], keep_indices)
+
         # 5. 剪枝下游層的輸入通道
-        if dependencies.get('next_layers'):
-            for next_layer in dependencies['next_layers']:
+        if dependencies.get('downstream_layers'):
+            for next_layer in dependencies['downstream_layers']:
                 self._prune_next_layer_inputs(layer_name, next_layer, keep_indices)
         
         # 6. 處理殘差連接
         if dependencies.get('downsample_layer'):
-            self._prune_downsample_connection(dependencies['downsample_layer'], keep_indices)
-        
+            check , downsample_layer_name = self._should_process_downsample(layer_name, dependencies)
+            if check:
+                self._prune_downsample_connection(downsample_layer_name, keep_indices)
+
         # 7. 處理輸入通道修正（針對特殊連接）
         if dependencies.get('needs_input_fix'):
             self._prune_in_channel_for_connection_fix(layer_name, keep_indices)
@@ -52,23 +53,527 @@ class Pruner:
         self.track_channel_indices(layer_name, keep_indices)
     
         print(f"[PRUNE] 完成剪枝層級: {layer_name}")
+    
+    def _should_process_downsample(self, layer_name, dependencies):
+        """
+        判斷是否需要處理 downsample 層
+        
+        Args:
+            layer_name: 當前剪枝的層名稱
+            dependencies: 依賴關係字典
+            
+        Returns:
+            tuple: (should_process, downsample_path)
+        """
+        # 解析層名稱
+        clean_name = layer_name.replace('net_feature_maps.', '')
+        parts = clean_name.split('.')
+        
+        # 只有滿足以下條件才需要處理 downsample：
+        # 1. 是 conv3 層
+        # 2. 是第一個 block (index 0)
+        # 3. 實際存在 downsample 層
+        
+        if (len(parts) >= 3 and 
+            parts[2] == 'conv3' and 
+            parts[1] == '0'):
+            
+            # 構建 downsample 路徑
+            downsample_path = f"net_feature_maps.{parts[0]}.0.downsample"
+            
+            # 檢查是否真的存在
+            if self._verify_layer_exists(downsample_path):
+                return True, downsample_path
+        
+        return False, None
+
+    def _prune_next_layer_inputs(
+            self,
+            current_layer_name: str,
+            next_layer_name: str,
+            keep_indices: list
+        ) -> bool:
+        """
+        同步裁剪下一層的輸入通道 / 特徵
+
+        Args
+        ----
+        current_layer_name : 當前已剪枝層 (僅用於日誌)
+        next_layer_name    : 需修補的下一層 (Conv / Linear)
+        keep_indices       : 前一層保留的輸出通道索引
+
+        Returns
+        -------
+        bool : 剪枝是否成功
+        """
+        try:
+            print(f"[PRUNE] 修補 {next_layer_name} 的輸入通道 (來源 {current_layer_name})")
+
+            next_layer = self._get_layer_by_path(next_layer_name)
+            if next_layer is None:
+                print(f"[WARNING] 找不到層：{next_layer_name}，跳過修補")
+                return False
+
+            # ---------- 1. Conv 系列 ----------
+            if isinstance(next_layer, (torch.nn.Conv1d,
+                                    torch.nn.Conv2d,
+                                    torch.nn.Conv3d)):
+                with torch.no_grad():
+                    w = next_layer.weight.data
+                    # w 形狀: [out_c, in_c, ...]
+                    new_w = w[:, keep_indices, ...].clone()
+                    next_layer.weight = torch.nn.Parameter(new_w)
+                    next_layer.in_channels = len(keep_indices)
+
+                print(f"[PRUNE] Conv 輸入維度: {w.shape} → {new_w.shape}")
+                return True
+
+            # ---------- 2. 線性層 ----------
+            if isinstance(next_layer, torch.nn.Linear):
+                with torch.no_grad():
+                    w = next_layer.weight.data          # [out_f, in_f]
+                    new_w = w[:, keep_indices].clone()
+                    next_layer.weight = torch.nn.Parameter(new_w)
+                    next_layer.in_features = len(keep_indices)
+
+                print(f"[PRUNE] Linear 輸入維度: {w.shape} → {new_w.shape}")
+                return True
+
+            # ---------- 3. GroupNorm / LayerNorm (可選處理) ----------
+            if isinstance(next_layer, torch.nn.GroupNorm):
+                # GroupNorm 的 weight / bias 與 in_channels 等長
+                with torch.no_grad():
+                    next_layer.weight = torch.nn.Parameter(
+                        next_layer.weight[keep_indices].clone())
+                    next_layer.bias = torch.nn.Parameter(
+                        next_layer.bias[keep_indices].clone())
+                next_layer.num_channels = len(keep_indices)
+                print(f"[PRUNE] GroupNorm 通道同步完成")
+                return True
+
+            # 其他層型別暫不處理
+            print(f"[INFO] {next_layer_name} 類型 {type(next_layer)} 無需修補")
+            return True
+
+        except Exception as e:
+            print(f"[ERROR] 修補 {next_layer_name} 失敗：{e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def _prune_in_channel_for_connection_fix(
+        self,
+        layer_name: str,
+        keep_indices: list[int]
+    ) -> bool:
+        """
+        修正 *當前層* 的輸入通道，通常只有下列兩種情況才會呼叫：
+        1. 第一個 block 的 conv1（因上一個 stage downsample）
+        2. 殘差分支中的 downsample.conv
+
+        Args
+        ----
+        layer_name   : 需要修補的層（卷積 / 線性 / 歸一化）
+        keep_indices : 來源層保留下來的 out-channel 索引
+
+        Returns
+        -------
+        bool : 是否修補成功
+        """
+        try:
+            layer = self._get_layer_by_path(layer_name)
+            if layer is None:
+                print(f"[WARN] 找不到層：{layer_name}，跳過 in-channel 修補")
+                return False
+
+            # ---------------- 1. Conv 層 ----------------
+            if isinstance(layer, (torch.nn.Conv1d,
+                                torch.nn.Conv2d,
+                                torch.nn.Conv3d)):
+
+                if layer.in_channels == len(keep_indices):
+                    # 通道數未變化，直接返回
+                    return True  
+
+                with torch.no_grad():
+                    w_old = layer.weight.data          # [out_c, in_c, ...]
+                    w_new = w_old[:, keep_indices, ...].clone()
+                    layer.weight  = torch.nn.Parameter(w_new)
+                    layer.in_channels = len(keep_indices)
+
+                print(f"[PRUNE] Conv 修補 {layer_name}: "
+                    f"in {w_old.shape} ➜ {w_new.shape}")
+                return True
+
+            # ---------------- 2. 線性層 ----------------
+            if isinstance(layer, torch.nn.Linear):
+                if layer.in_features == len(keep_indices):
+                    return True
+
+                with torch.no_grad():
+                    w_old = layer.weight.data          # [out_f, in_f]
+                    w_new = w_old[:, keep_indices].clone()
+                    layer.weight = torch.nn.Parameter(w_new)
+                    layer.in_features = len(keep_indices)
+
+                print(f"[PRUNE] Linear 修補 {layer_name}: "
+                    f"in {w_old.shape} ➜ {w_new.shape}")
+                return True
+
+            # ---------------- 3. (Group)Norm 層 ----------------
+            if isinstance(layer, (torch.nn.BatchNorm1d,
+                                torch.nn.BatchNorm2d,
+                                torch.nn.GroupNorm,
+                                torch.nn.LayerNorm)):
+
+                if layer.weight.shape[0] == len(keep_indices):
+                    return True
+
+                with torch.no_grad():
+                    if hasattr(layer, "weight") and layer.weight is not None:
+                        layer.weight = torch.nn.Parameter(
+                            layer.weight[keep_indices].clone())
+                    if hasattr(layer, "bias") and layer.bias is not None:
+                        layer.bias   = torch.nn.Parameter(
+                            layer.bias[keep_indices].clone())
+
+                    # running_* 僅 BatchNorm 具有
+                    if hasattr(layer, "running_mean"):
+                        layer.running_mean = layer.running_mean[keep_indices].clone()
+                    if hasattr(layer, "running_var"):
+                        layer.running_var  = layer.running_var[keep_indices].clone()
+
+                # num_features / num_channels / normalized_shape
+                if hasattr(layer, "num_features"):
+                    layer.num_features = len(keep_indices)
+                if hasattr(layer, "num_channels"):
+                    layer.num_channels = len(keep_indices)
+                if hasattr(layer, "normalized_shape"):
+                    layer.normalized_shape = (len(keep_indices),)
+
+                print(f"[PRUNE] Norm 修補 {layer_name}: "
+                    f"features ➜ {len(keep_indices)}")
+                return True
+
+            # ---------------------------------------------------
+            print(f"[INFO] {layer_name} 類型 {type(layer)} 無需修補")
+            return True
+
+        except Exception as e:
+            print(f"[ERROR] 修補 {layer_name} 失敗：{e}")
+            import traceback; traceback.print_exc()
+            return False
+
+    def _prune_batchnorm_layer(self, bn_layer_name, keep_indices):
+        """
+        剪枝 BatchNorm 層的所有參數
+        
+        Args:
+            bn_layer_name: BatchNorm 層的名稱（如 'net_feature_maps.layer2.1.bn2'）
+            keep_indices: 要保留的通道索引列表
+        """
+        try:
+            print(f"[PRUNE] 開始剪枝 BatchNorm 層: {bn_layer_name}")
+            
+            # 1. 獲取 BatchNorm 層對象
+            bn_layer = self._get_layer_by_name(bn_layer_name)
+            
+            if bn_layer is None:
+                print(f"[WARNING] 找不到 BatchNorm 層: {bn_layer_name}")
+                return False
+            
+            # 2. 驗證層類型
+            if not isinstance(bn_layer, (torch.nn.BatchNorm2d, torch.nn.BatchNorm1d)):
+                print(f"[WARNING] {bn_layer_name} 不是 BatchNorm 層，類型: {type(bn_layer)}")
+                return False
+            
+            # 3. 記錄原始參數信息
+            original_features = bn_layer.num_features
+            new_features = len(keep_indices)
+            
+            print(f"[PRUNE] BatchNorm 通道數變化: {original_features} -> {new_features}")
+            
+            # 4. 剪枝可學習參數
+            with torch.no_grad():
+                # 剪枝 weight (gamma 參數)
+                if hasattr(bn_layer, 'weight') and bn_layer.weight is not None:
+                    new_weight = bn_layer.weight[keep_indices].clone()
+                    bn_layer.weight = torch.nn.Parameter(new_weight)
+                    print(f"[PRUNE] BatchNorm weight 剪枝完成: {new_weight.shape}")
+                
+                # 剪枝 bias (beta 參數)
+                if hasattr(bn_layer, 'bias') and bn_layer.bias is not None:
+                    new_bias = bn_layer.bias[keep_indices].clone()
+                    bn_layer.bias = torch.nn.Parameter(new_bias)
+                    print(f"[PRUNE] BatchNorm bias 剪枝完成: {new_bias.shape}")
+            
+            # 5. 剪枝運行時統計參數
+            if hasattr(bn_layer, 'running_mean') and bn_layer.running_mean is not None:
+                bn_layer.running_mean = bn_layer.running_mean[keep_indices].clone()
+                print(f"[PRUNE] BatchNorm running_mean 剪枝完成: {bn_layer.running_mean.shape}")
+            
+            if hasattr(bn_layer, 'running_var') and bn_layer.running_var is not None:
+                bn_layer.running_var = bn_layer.running_var[keep_indices].clone()
+                print(f"[PRUNE] BatchNorm running_var 剪枝完成: {bn_layer.running_var.shape}")
+            
+            # 6. 更新 num_features 屬性
+            bn_layer.num_features = new_features
+            
+            # 7. 驗證剪枝結果
+            self._validate_bn_pruning(bn_layer, keep_indices, bn_layer_name)
+            
+            print(f"[PRUNE] BatchNorm 層 {bn_layer_name} 剪枝成功")
+            return True
+            
+        except Exception as e:
+            print(f"[ERROR] 剪枝 BatchNorm 層 {bn_layer_name} 失敗: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def _get_layer_by_name(self, layer_name):
+        """
+        根據層名稱獲取層對象
+        
+        Args:
+            layer_name: 層名稱（支持點分割路徑）
+            
+        Returns:
+            torch.nn.Module: 層對象，如果找不到則返回 None
+        """
+        try:
+            # 移除 'net_feature_maps.' 前綴（如果存在）
+            if layer_name.startswith('net_feature_maps.'):
+                layer_path = layer_name.replace('net_feature_maps.', '')
+            else:
+                layer_path = layer_name
+            
+            # 從剪枝網路開始遍歷
+            layer = self.prune_network.net_feature_maps
+            
+            # 按路徑逐級獲取層對象
+            for attr in layer_path.split('.'):
+                if hasattr(layer, attr):
+                    layer = getattr(layer, attr)
+                elif attr.isdigit():
+                    layer = layer[int(attr)]
+                else:
+                    print(f"[ERROR] 無法找到屬性: {attr} in {layer_path}")
+                    return None
+            
+            return layer
+            
+        except Exception as e:
+            print(f"[ERROR] 獲取層 {layer_name} 失敗: {e}")
+            return None
+
+    def _validate_bn_pruning(self, bn_layer, keep_indices, bn_layer_name):
+        """
+        驗證 BatchNorm 剪枝結果的正確性
+        
+        Args:
+            bn_layer: 剪枝後的 BatchNorm 層
+            keep_indices: 保留的通道索引
+            bn_layer_name: 層名稱
+        """
+        try:
+            expected_features = len(keep_indices)
+            
+            # 檢查 num_features
+            assert bn_layer.num_features == expected_features, \
+                f"num_features 不匹配: {bn_layer.num_features} vs {expected_features}"
+            
+            # 檢查參數維度
+            if bn_layer.weight is not None:
+                assert bn_layer.weight.shape[0] == expected_features, \
+                    f"weight 維度不匹配: {bn_layer.weight.shape[0]} vs {expected_features}"
+            
+            if bn_layer.bias is not None:
+                assert bn_layer.bias.shape[0] == expected_features, \
+                    f"bias 維度不匹配: {bn_layer.bias.shape[0]} vs {expected_features}"
+            
+            if bn_layer.running_mean is not None:
+                assert bn_layer.running_mean.shape[0] == expected_features, \
+                    f"running_mean 維度不匹配: {bn_layer.running_mean.shape[0]} vs {expected_features}"
+            
+            if bn_layer.running_var is not None:
+                assert bn_layer.running_var.shape[0] == expected_features, \
+                    f"running_var 維度不匹配: {bn_layer.running_var.shape[0]} vs {expected_features}"
+            
+            print(f"[VALIDATE] BatchNorm 層 {bn_layer_name} 剪枝驗證通過")
+            
+        except AssertionError as e:
+            print(f"[ERROR] BatchNorm 剪枝驗證失敗 {bn_layer_name}: {e}")
+            raise
+        except Exception as e:
+            print(f"[ERROR] BatchNorm 剪枝驗證出錯 {bn_layer_name}: {e}")
+            raise
+
+    def _prune_downsample_connection(self, downsample_layer_path: str,
+                                 keep_indices: list[int]) -> None:
+        """
+        裁剪 ResNet downsample Sequential 之 conv + bn。
+
+        Args
+        ----
+        downsample_layer_path : 例 "net_feature_maps.layer2.0.downsample"
+        keep_indices          : 保留的 out-channel 索引
+        """
+        if not keep_indices:
+            print(f"[WARN] keep_indices 為空，跳過 downsample 剪枝")
+            return
+
+        if not self._verify_layer_exists(downsample_layer_path):
+            print(f"[WARN] 找不到 downsample 層：{downsample_layer_path}")
+            return
+
+        seq_layer = self._get_layer_by_path(downsample_layer_path)
+        if not isinstance(seq_layer, torch.nn.Sequential):
+            print(f"[WARN] {downsample_layer_path} 非 Sequential，跳過")
+            return
+
+        # 依序期望：0→Conv2d，1→BatchNorm2d
+        conv_layer: torch.nn.Conv2d  = seq_layer[0]
+        bn_layer:   torch.nn.Module  = seq_layer[1]
+
+        ori_device = conv_layer.weight.device  # 記錄原始 device
+        conv_layer.cpu();  bn_layer.cpu()      # 先搬到 CPU，避免 CUDA assert
+
+        try:
+            # ---------- Conv 剪枝 ----------
+            out_c, in_c, k_h, k_w = conv_layer.weight.shape
+            assert max(keep_indices) < out_c, \
+                f"索引超界：max={max(keep_indices)}, out_c={out_c}"
+
+            conv_layer.weight = torch.nn.Parameter(
+                conv_layer.weight[keep_indices].clone()
+            )
+            if conv_layer.bias is not None:
+                conv_layer.bias = torch.nn.Parameter(
+                    conv_layer.bias[keep_indices].clone()
+                )
+            conv_layer.out_channels = len(keep_indices)
+
+            # groups 需能整除 in/out，常見 downsample.groups==1
+            if conv_layer.groups > 1:
+                conv_layer.groups = min(conv_layer.groups, len(keep_indices))
+
+            # ---------- BN 剪枝 ----------
+            num_feat = bn_layer.num_features
+            assert max(keep_indices) < num_feat, \
+                f"BN 索引超界：max={max(keep_indices)}, feat={num_feat}"
+
+            bn_layer.weight = torch.nn.Parameter(
+                bn_layer.weight[keep_indices].clone()
+            )
+            bn_layer.bias   = torch.nn.Parameter(
+                bn_layer.bias[keep_indices].clone()
+            )
+            bn_layer.running_mean = bn_layer.running_mean[keep_indices].clone()
+            bn_layer.running_var  = bn_layer.running_var[keep_indices].clone()
+            bn_layer.num_features = len(keep_indices)
+
+            print(f"[PRUNE✔] {downsample_layer_path} "
+                f"Conv/BN : {out_c} ➜ {len(keep_indices)}")
+
+        except Exception as e:
+            print(f"[PRUNE✘] Downsample 剪枝失敗 ({downsample_layer_path}): {e}")
+            raise
+
+        finally:
+            # 恢復到原 device
+            seq_layer.to(ori_device)
 
 
+    def _prune_conv_in_downsample(self, conv_layer, layer_path, keep_indices):
+        """剪枝 downsample 中的卷積層"""
+        try:
+            original_channels = conv_layer.out_channels
+            
+            with torch.no_grad():
+                # 剪枝輸出通道
+                new_weight = conv_layer.weight[keep_indices].clone()
+                conv_layer.weight = torch.nn.Parameter(new_weight)
+                
+                if conv_layer.bias is not None:
+                    new_bias = conv_layer.bias[keep_indices].clone()
+                    conv_layer.bias = torch.nn.Parameter(new_bias)
+                
+                conv_layer.out_channels = len(keep_indices)
+            
+            print(f"[Pruner] Downsample Conv {layer_path}: {original_channels} → {len(keep_indices)}")
+            
+        except Exception as e:
+            print(f"[ERROR] Downsample Conv 剪枝失敗 {layer_path}: {e}")
 
-    def _prune_next_layer_inputs(self, current_layer_name, next_layer_name, keep_indices):
-        pass
+    def _prune_bn_in_downsample(self, bn_layer, layer_path, keep_indices):
+        """剪枝 downsample 中的 BatchNorm 層"""
+        try:
+            original_features = bn_layer.num_features
+            
+            with torch.no_grad():
+                if hasattr(bn_layer, 'weight') and bn_layer.weight is not None:
+                    bn_layer.weight = torch.nn.Parameter(bn_layer.weight[keep_indices].clone())
+                
+                if hasattr(bn_layer, 'bias') and bn_layer.bias is not None:
+                    bn_layer.bias = torch.nn.Parameter(bn_layer.bias[keep_indices].clone())
+                
+                if hasattr(bn_layer, 'running_mean'):
+                    bn_layer.running_mean = bn_layer.running_mean[keep_indices].clone()
+                
+                if hasattr(bn_layer, 'running_var'):
+                    bn_layer.running_var = bn_layer.running_var[keep_indices].clone()
+                
+                bn_layer.num_features = len(keep_indices)
+            
+            print(f"[Pruner] Downsample BN {layer_path}: {original_features} → {len(keep_indices)}")
+            
+        except Exception as e:
+            print(f"[ERROR] Downsample BN 剪枝失敗 {layer_path}: {e}")
 
-    def _prune_in_channel_for_connection_fix(self, layer_name, keep_indexes):
-        pass
 
-    def _prune_batchnorm_layer(self, bn_layer, keep_indices):
-        pass
+    def track_channel_indices(self, layer_name: str, keep_indices: list[int]) -> None:
+        """
+        將剪枝結果寫回資料庫並保存在記憶體
 
-    def _prune_downsample_connection(self, downsample_layer, keep_indices):
-        pass
+        欄位：
+        - layer                  : 層名稱
+        - original_channel_num   : 剪枝前通道數
+        - num_of_keep_channel    : 剩餘通道數
+        - keep_index             : list 文字串
+        """
+        # ------- 1. 取得原始通道數 -------
+        layer_obj = self._get_layer_by_path(layer_name)
+        if layer_obj is None:
+            print(f"[WARN] track_channel 無法找到層：{layer_name}")
+            return
 
-    def track_channel_indices(self, layer_name, keep_indices):
-        pass
+        ori_channels = self._get_output_channels(layer_obj)
+
+        # ------- 2. 寫回 CSV (若有設定 prune_db) -------
+        if self.prune_db is not None:
+            try:
+                self.prune_db.write_data(layer   = layer_name,
+                                        original_channel_num = ori_channels,
+                                        num_of_keep_channel  = len(keep_indices),
+                                        keep_index           = keep_indices)
+            except Exception as e:
+                print(f"[WARN] 寫入 prune_db 失敗：{e}")
+
+        # ------- 3. 緩存於記憶體 -------
+        if not hasattr(self, "_prune_history"):
+            self._prune_history = {}
+
+        self._prune_history[layer_name] = {
+            "original_channels": ori_channels,
+            "kept_channels"    : len(keep_indices),
+            "prune_ratio"      : 1 - len(keep_indices)/ori_channels,
+            "keep_indices"     : keep_indices.copy()
+        }
+
+        print(f"[TRACK] {layer_name} 剪枝率 "
+            f"{self._prune_history[layer_name]['prune_ratio']:.1%}")
+
 
     def _prune_out_channel(self, layer_name, keep_indexes):
         """
@@ -280,9 +785,11 @@ class Pruner:
             'target': target_layer,
             'batch_norm': None,
             'downstream_layers': [],
+            'downsample_layer': None,
             'skip_connections': [],
             'dependency_type': 'conv',
-            'pruning_strategy': 'channel_pruning'
+            'pruning_strategy': 'channel_pruning',
+            'needs_input_fix': False
         }
         
         try:
@@ -301,15 +808,18 @@ class Pruner:
             downstream_layers = self._find_downstream_layers(target_layer, layer_parts, block_info)
             dependencies['downstream_layers'] = downstream_layers
             
-            # 5. 處理 ResNet 跳躍連接
-            if layer_type == 'residual':
-                skip_connections = self._find_skip_connections(layer_parts, block_info)
+            # 5. 處理 ResNet 跳躍連接和 downsample
+            if layer_type == 'residual' and target_layer.endswith('conv3'):
+                skip_connections, downsample_layer = self._find_skip_connections_and_downsample(layer_parts, block_info)
                 dependencies['skip_connections'] = skip_connections
+                dependencies['downsample_layer'] = downsample_layer
             
             # 6. 確定剪枝策略
             pruning_strategy = self._determine_pruning_strategy(layer_type, block_info)
             dependencies['pruning_strategy'] = pruning_strategy
             
+            dependencies['needs_input_fix'] = self._needs_input_channel_fix(layer_parts, block_info)
+
             print(f"[LCP] 層級依賴分析完成 - {target_layer}")
             print(f"      BatchNorm: {batch_norm_layer}")
             print(f"      下游層級: {len(downstream_layers)} 個")
@@ -390,22 +900,62 @@ class Pruner:
         
         return downstream_layers
 
-    def _find_skip_connections(self, layer_parts, block_info):
-        """找出跳躍連接相關層級"""
+    def _find_skip_connections_and_downsample(self, layer_parts, block_info):
+        """
+        找出跳躍連接相關層級和 downsample 層
+        
+        Returns:
+            tuple: (skip_connections, downsample_layer)
+        """
         skip_connections = []
+        downsample_layer = None
         
-        # ResNet 跳躍連接分析
-        if block_info.get('is_first_block') and block_info.get('group') != 'layer1':
-            # 第一個 block 通常有 downsample 層
-            downsample_layer = f"net_feature_maps.{block_info['group']}.0.downsample.0"
-            skip_connections.append(downsample_layer)
-        
-        # 檢查是否影響殘差連接
-        if block_info.get('conv_position') == 'conv3':
-            # conv3 的輸出會與跳躍連接相加
-            skip_connections.append('residual_addition')
-        
-        return skip_connections
+        try:
+            # ResNet 跳躍連接分析
+            if block_info.get('is_first_block') and block_info.get('group') != 'layer1':
+                # 第一個 block 通常有 downsample 層
+                downsample_path = f"net_feature_maps.{block_info['group']}.0.downsample"
+                if self._verify_layer_exists(downsample_path):
+                    downsample_layer = downsample_path
+                    skip_connections.append(downsample_path)
+            
+            # 檢查當前 block 是否有 downsample（針對 conv3 層）
+            if block_info.get('conv_position') == 'conv3':
+                # 構建當前 block 的 downsample 路徑
+                current_block_path = f"net_feature_maps.{block_info['group']}.{block_info['block_index']}.downsample"
+                
+                if self._verify_layer_exists(current_block_path):
+                    downsample_layer = current_block_path
+                    skip_connections.append(current_block_path)
+                
+                # conv3 的輸出會與跳躍連接相加
+                skip_connections.append('residual_addition')
+            
+            # 特殊情況：檢查是否為最後一個 block 的 conv3
+            if (block_info.get('conv_position') == 'conv3' and 
+                not self._has_next_block(block_info)):
+                # 最後一個 block 的 conv3 可能影響整個 layer group 的輸出
+                skip_connections.append('layer_group_output')
+            
+            return skip_connections, downsample_layer
+            
+        except Exception as e:
+            print(f"[ERROR] 查找跳躍連接失敗: {e}")
+            return [], None
+
+    def _has_next_block(self, block_info):
+        """檢查是否有下一個 block"""
+        try:
+            current_group = block_info['group']
+            current_block = block_info['block_index']
+            
+            # 檢查同一 layer group 中的下一個 block
+            next_block_path = f"net_feature_maps.{current_group}.{current_block + 1}"
+            return self._verify_layer_exists(next_block_path)
+            
+        except:
+            return False
+
 
     def _find_next_block_layers(self, layer_parts, block_info):
         """找出下一個 block 的相關層級"""
@@ -459,6 +1009,23 @@ class Pruner:
         except:
             return False
         
+    def _needs_input_channel_fix(self, layer_parts, block_info):
+        """判斷是否需要輸入通道修正"""
+        try:
+            # conv3 層通常需要輸入修正，因為它們影響殘差連接
+            if block_info.get('conv_position') == 'conv3':
+                return True
+            
+            # 第一個 block 的 conv1 可能需要修正
+            if (block_info.get('is_first_block') and 
+                block_info.get('conv_position') == 'conv1'):
+                return True
+            
+            return False
+            
+        except:
+            return False
+
     def print_detailed_layers(self, if_print=False):
         """列印詳細的層級資訊，包含參數數量"""
         print("=== net_feature_maps 詳細層級資訊 ===")
@@ -479,9 +1046,11 @@ class Pruner:
                     
                     if hasattr(child, 'out_channels'):
                         layer_info += f" - Out Channels: {child.out_channels}"
-                    elif hasattr(child, 'num_features'):
+                    if hasattr(child, 'num_features'):
                         layer_info += f" - Num Features: {child.num_features}"
-                    
+                    if hasattr(child, 'in_channels'):
+                        layer_info += f" - In Channels: {child.in_channels}"
+
                     if if_print:
                         print(layer_info)
                     

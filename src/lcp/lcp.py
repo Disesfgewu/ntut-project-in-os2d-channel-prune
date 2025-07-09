@@ -4,6 +4,8 @@ import copy
 import numpy as np
 import random
 
+from src.lcp.pruner import Pruner
+
 class LCP:
     def __init__(self, net, aux_net, dataloader, img_normalization=None):
         # 預設所有模型都在 CPU 上（按需 GPU 策略）
@@ -18,6 +20,7 @@ class LCP:
         self._keep_dices = {}
         self._prune_net_device = 'cpu'
         self._net_device = 'cpu'
+        self._pruner = Pruner(self._prune_net)
         
         # 圖像標準化參數
         if img_normalization is None:
@@ -180,7 +183,7 @@ class LCP:
             
             # 4. 智能設備管理：根據計算需求決定設備位置
             img_tensor = img_tensor.cuda()
-            print(f"[LCP] Image tensor moved to GPU - shape: {img_tensor.shape}")
+            # print(f"[LCP] Image tensor moved to GPU - shape: {img_tensor.shape}")
             return img_tensor
             
         except Exception as e:

@@ -18,8 +18,10 @@ class Pruner:
         print(f"[PRUNE] 開始剪枝層級: {layer_name}")
         
         # 1. 獲取保留索引
-        keep_indices = self.get_prune_layers_keep_indices(layer_name)
-        
+        if layer_name.startswith('net_feature_maps.'):
+            keep_indices = self.get_prune_layers_keep_indices(layer_name)
+        else:
+            keep_indices = self.get_prune_layers_keep_indices(f"net_feature_maps.{layer_name}")    
         if not keep_indices:
             print(f"[WARNING] {layer_name} 無保留索引，跳過剪枝")
             return
@@ -45,10 +47,6 @@ class Pruner:
             if check:
                 self._prune_downsample_connection(downsample_layer_name, keep_indices)
 
-        # 7. 處理輸入通道修正（針對特殊連接）
-        if dependencies.get('needs_input_fix'):
-            self._prune_in_channel_for_connection_fix(layer_name, keep_indices)
-        
         # 8. 更新通道索引追蹤
         self.track_channel_indices(layer_name, keep_indices)
     

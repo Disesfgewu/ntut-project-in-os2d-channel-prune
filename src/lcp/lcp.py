@@ -5,6 +5,9 @@ import numpy as np
 import random
 
 from src.lcp.pruner import Pruner
+from os2d.utils import get_image_size_after_resize_preserving_aspect_ratio
+from src.util.detection import generate_detection_boxes
+from src.util.visualize import visualize_boxes_on_image
 
 class LCP:
     def __init__(self, net, aux_net, dataloader, img_normalization=None):
@@ -21,7 +24,8 @@ class LCP:
         self._prune_net_device = 'cpu'
         self._net_device = 'cpu'
         self._pruner = Pruner(self._prune_net)
-        
+        self._prune_db = None
+
         # 圖像標準化參數
         if img_normalization is None:
             self.img_normalization = {
@@ -45,6 +49,10 @@ class LCP:
             # 初始化時保留所有 channel
             self._keep_dices[name] = list(range(ch))
         print(f"[LCP] 初始化完成，共 {len(self._keep_dices)} 層的 channel 索引")
+
+    def set_prune_db(self, prune_db):
+        self._prune_db = prune_db
+        self._pruner.set_prune_db(prune_db)
 
     def get_prune_net(self):
         return self._prune_net
@@ -391,96 +399,7 @@ class LCP:
       print(f"[LOG] change prune net to CPU3")
       torch.cuda.empty_cache()
       return importance
-          
-    # dirty test code
-    def test_for_prune_channel(self, num_images=3, num_modify=5, random_seed=42):
-        """
-        LCP論文標準流程測試 + 測試剪枝後隨機改動部分保留channel權重
-        1. 直接物理剪掉 net_feature_maps.layer2.1.conv2 的一半 output channel（slicing）
-        2. 對應同步 BN2、下一層 conv3 的 input channel
-        3. 隨機選幾個保留channel，prune_net的weight加上隨機值
-        4. rec loss 計算時，對 orig_net 的 feature map 做 slicing，只比較保留 channel
-        """
-        import numpy as np
-        import torch
-
-        layer_name = 'net_feature_maps.layer2.1.conv2'
-        next_layer_name = 'net_feature_maps.layer2.1.conv3'
-        bn_layer_name = layer_name.replace('conv2', 'bn2')
-
-        # 隨機取幾張圖像
-        image_id_all = list(map(int, self._get_db().get_image_ids()))
-        image_ids = random.sample(image_id_all, min(num_images, len(image_id_all)))
-
-        # 取得 prune_net 的 conv2 層
-        layer = self._prune_net
-        for attr in layer_name.split('.'):
-            if hasattr(layer, attr):
-                layer = getattr(layer, attr)
-            elif attr.isdigit():
-                layer = layer[int(attr)]
-            else:
-                raise ValueError(f"Layer {layer_name} not found in prune_net")
-        out_channels = layer.weight.shape[0]
-        keep_out_idx = np.arange(out_channels // 2, out_channels)  # 只保留後半
-
-        print(f"==> 測試前，{layer_name} 的重建誤差：")
-        rec_loss_before = self.compute_reconstruction_loss(image_ids, layer_name)
-        print(f"[Before Prune] Reconstruction loss: {rec_loss_before:.6f}")
-
-        # 1. Conv2 output channel slicing（物理剪掉一半channel）
-        with torch.no_grad():
-            new_weight = layer.weight[keep_out_idx].clone()
-            if layer.bias is not None:
-                new_bias = layer.bias[keep_out_idx].clone()
-            else:
-                new_bias = None
-
-        # 2. 隨機修改幾個保留channel的權重
-        np.random.seed(random_seed)
-        modify_idx = np.random.choice(len(keep_out_idx), size=min(num_modify, len(keep_out_idx)), replace=False)
-        with torch.no_grad():
-            for idx in modify_idx:
-                new_weight[idx] += torch.randn_like(new_weight[idx]) * 0.5  # 你可以調整噪聲幅度
-                if new_bias is not None:
-                    new_bias[idx] += torch.randn_like(new_bias[idx]) * 0.5
-            layer.weight = torch.nn.Parameter(new_weight)
-            if layer.bias is not None:
-                layer.bias = torch.nn.Parameter(new_bias)
-
-        # 3. BN2 層同步 slicing
-        bn_layer = self._prune_net
-        for attr in bn_layer_name.split('.'):
-            if hasattr(bn_layer, attr):
-                bn_layer = getattr(bn_layer, attr)
-            elif attr.isdigit():
-                bn_layer = bn_layer[int(attr)]
-            else:
-                raise ValueError(f"Layer {bn_layer_name} not found in prune_net")
-        with torch.no_grad():
-            bn_layer.weight = torch.nn.Parameter(bn_layer.weight[keep_out_idx].clone())
-            bn_layer.bias = torch.nn.Parameter(bn_layer.bias[keep_out_idx].clone())
-            bn_layer.running_mean = bn_layer.running_mean[keep_out_idx].clone()
-            bn_layer.running_var = bn_layer.running_var[keep_out_idx].clone()
-
-        # 4. 下一層 conv3 input channel slicing
-        next_layer = self._prune_net
-        for attr in next_layer_name.split('.'):
-            if hasattr(next_layer, attr):
-                next_layer = getattr(next_layer, attr)
-            elif attr.isdigit():
-                next_layer = next_layer[int(attr)]
-            else:
-                raise ValueError(f"Layer {next_layer_name} not found in prune_net")
-        with torch.no_grad():
-            next_layer.weight = torch.nn.Parameter(next_layer.weight[:, keep_out_idx].clone())
-
-        # 5. 計算剪枝後重建誤差（orig_net feature map 也做 slicing，只比較保留 channel）
-        print(f"==> 測試後，{layer_name} 的重建誤差（只比較保留 channel）：")
-        rec_loss_after = self.compute_reconstruction_loss(image_ids, layer_name, keep_out_idx=keep_out_idx)
-        print(f"[After Prune] Reconstruction loss: {rec_loss_after:.6f}")
-
-        return rec_loss_before, rec_loss_after
+         
     def _get_layer_by_name(self, layer_name, net):
         """
         根據層名稱獲取層對象
@@ -830,3 +749,63 @@ class LCP:
 
         # -------- 4. 回傳結果 --------
         return np.sort(keep_idx), np.sort(discard_idx)
+
+    def get_channel_selection_and_write_to_db( self, layer_name , discard_rate=0.5, use_image_num=3, random_seed=42):
+        """
+        layer_name : ex 'layer3.2.conv2'
+        """
+        keep, discard = self.get_channel_selection_by_no_grad(
+            layer_name   = f"net_feature_maps.{layer_name}",
+            discard_rate = discard_rate,
+            lambda_rate  = 1.0,
+            use_image_num= use_image_num,
+            random_seed  = random_seed
+        )
+
+        print(f"layer {layer_name} , 預計保留通道數量: {len(keep)}/{len(keep)+len(discard)}, 預計捨棄通道數量: {len(discard)}/{len(keep)+len(discard)}")
+
+        self._prune_db.write_data(
+            layer = f"net_feature_maps.{layer_name}",
+            original_channel_num= len(keep) + len(discard),
+            num_of_keep_channel = len(keep),
+            keep_index  = keep
+        )
+
+    def prune_layer(self, layer_name, discard_rate=0.5, use_image_num=3, random_seed=42):
+        self.get_channel_selection_and_write_to_db(
+            layer_name   = layer_name,
+            discard_rate = discard_rate,
+            use_image_num= use_image_num,
+            random_seed  = random_seed
+        )
+
+        self._pruner.prune_layer(
+            layer_name   = layer_name
+        )
+
+    def debug_for_test_vision(self, dataloader_train, img_normalization, box_coder, cfg, count=1):
+        image_id = 0
+        class_id = 0
+        self._prune_net = self._prune_net.cuda()
+        get, labels, scores = generate_detection_boxes(dataloader_train, self._prune_net, img_normalization, box_coder, image_id, class_id, cfg, class_num=count*2)
+        from os2d.modeling.box_coder import BoxList
+
+        original_image = dataloader_train._get_dataset_image_by_id(image_id)
+        orig_h, orig_w = original_image.size[1], original_image.size[0]
+        
+        image_height, image_width = get_image_size_after_resize_preserving_aspect_ratio(h=original_image.size[1],
+                                                                                        w=original_image.size[0],
+                                                                                        target_size=1500)
+        box_list = BoxList(get, (image_width, image_height), mode="xyxy")
+        box_list.add_field("labels", labels)
+        box_list.add_field("scores", scores)  # Add scores field for proper visualization
+        visualize_boxes_on_image(
+            image_id=image_id,
+            boxes_one_image=box_list,
+            dataloader=dataloader_train,
+            cfg=cfg,
+            class_ids=class_id,
+            path="detection",
+            is_detection=True,
+            showfig=True,  # Specify this is detection visualization
+        )

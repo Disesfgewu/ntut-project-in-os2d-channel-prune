@@ -71,50 +71,52 @@ class AuxiliaryNetwork:
         return giou_values
     
     def _compute_giou(self, box1, box2):
+        """支援梯度的 GIoU 計算"""
+        import torch
+        
+        # 轉換為 tensor（如果還不是的話）
+        if not isinstance(box1, torch.Tensor):
+            box1 = torch.tensor(box1, dtype=torch.float32, requires_grad=True)
+        if not isinstance(box2, torch.Tensor):
+            box2 = torch.tensor(box2, dtype=torch.float32, requires_grad=True)
+        
         x1_1, y1_1, x2_1, y2_1 = box1
         x1_2, y1_2, x2_2, y2_2 = box2
         
-        # 1. 計算交集區域
-        inter_x1 = max(x1_1, x1_2)
-        inter_y1 = max(y1_1, y1_2)
-        inter_x2 = min(x2_1, x2_2)
-        inter_y2 = min(y2_1, y2_2)
+        # 使用 torch 操作替代 Python 原生操作
+        inter_x1 = torch.max(x1_1, x1_2)
+        inter_y1 = torch.max(y1_1, y1_2)
+        inter_x2 = torch.min(x2_1, x2_2)
+        inter_y2 = torch.min(y2_1, y2_2)
         
-        # 交集面積 (確保非負)
-        inter_width = max(0, inter_x2 - inter_x1)
-        inter_height = max(0, inter_y2 - inter_y1)
+        # 交集面積
+        inter_width = torch.clamp(inter_x2 - inter_x1, min=0)
+        inter_height = torch.clamp(inter_y2 - inter_y1, min=0)
         intersection_area = inter_width * inter_height
         
-        # 2. 計算各自面積
+        # 各自面積
         area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
         area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
         
-        # 3. 計算聯集面積
+        # 聯集面積
         union_area = area1 + area2 - intersection_area
         
-        # 4. 計算 IoU
-        if union_area <= 0:
-            return -1.0  # 避免除零，返回最小 GIoU 值
+        # IoU
+        iou = intersection_area / (union_area + 1e-7)  # 避免除零
         
-        iou = intersection_area / union_area
+        # 最小包圍框
+        c_x1 = torch.min(x1_1, x1_2)
+        c_y1 = torch.min(y1_1, y1_2)
+        c_x2 = torch.max(x2_1, x2_2)
+        c_y2 = torch.max(y2_1, y2_2)
         
-        # 5. 計算最小包圍框 C (論文公式 2-5)
-        c_x1 = min(x1_1, x1_2)  # 公式 2: xc1 = min(xa1, xb1)
-        c_y1 = min(y1_1, y1_2)  # 公式 3: yc1 = min(ya1, yb1)
-        c_x2 = max(x2_1, x2_2)  # 公式 4: xc2 = max(xa2, xb2)
-        c_y2 = max(y2_1, y2_2)  # 公式 5: yc2 = max(ya2, yb2)
-        
-        # 最小包圍框面積
         c_area = (c_x2 - c_x1) * (c_y2 - c_y1)
         
-        # 6. 計算 GIoU (論文公式 7)
-        if c_area <= 0:
-            return -1.0  # 避免除零
-        
-        # GIoU = IoU - |C\U|/|C|
-        giou = iou - (c_area - union_area) / c_area
+        # GIoU
+        giou = iou - (c_area - union_area) / (c_area + 1e-7)
         
         return giou
+
     
     def ac_loss(self, image_id, class_id, point1, point2):
         """
@@ -217,32 +219,27 @@ class AuxiliaryNetwork:
         
         return regression_loss
 
-    def _compute_ar_loss(self, truth_boxes, default_boxes, m=50):
-        """
-        內部實作：計算回歸損失 L_ar = Σ (m - G_i)
-        
-        Args:
-            truth_boxes: 真實邊界框列表 [(x1, y1, x2, y2), ...]
-            default_boxes: 檢測邊界框列表 [(x1, y1, x2, y2), ...]
-            m: 常數係數
-            
-        Returns:
-            torch.Tensor: 總回歸損失
-        """
+    def _compute_ar_loss(self, truth_boxes, default_boxes, m=3):
+        """支援梯度的回歸損失計算"""
         import torch
         
-        total_regression_loss = torch.tensor(0.0)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        total_regression_loss = torch.tensor(0.0, device=device, requires_grad=True)
         
-        # 遍歷每個 box 對計算 GIoU 損失
         for truth_box, default_box in zip(truth_boxes, default_boxes):
-            # 計算 GIoU (G_i)
-            giou_value = self._compute_giou(truth_box, default_box)
+            # 轉換為 tensor
+            truth_tensor = torch.tensor(truth_box, dtype=torch.float32, device=device, requires_grad=True)
+            default_tensor = torch.tensor(default_box, dtype=torch.float32, device=device, requires_grad=True)
             
-            # 公式 9：(m - G_i)
-            # 當 GIoU 越大（重疊越好），損失越小
+            # 計算 GIoU（現在支援梯度）
+            giou_value = self._compute_giou(truth_tensor, default_tensor)
+            
+            # 回歸損失
             loss_i = m - giou_value
-            total_regression_loss += loss_i
+            total_regression_loss = total_regression_loss + loss_i
         
+        return total_regression_loss
+
         return total_regression_loss
 
     def _get_static_boxes(self, image_id, class_id, point1, point2):

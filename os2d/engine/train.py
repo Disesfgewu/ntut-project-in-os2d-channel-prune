@@ -44,7 +44,7 @@ def prepare_batch_data(batch_data, is_cuda, logger):
            batch_box_inverse_transform, batch_boxes, batch_img_size
 
 
-def train_one_batch(batch_data, net, cfg, criterion, optimizer, dataloader, logger):
+def train_one_batch(batch_data, net, cfg, criterion, optimizer, dataloader, logger, batch_idx=None):
     """One training iteration
         
     Args:
@@ -91,7 +91,8 @@ def train_one_batch(batch_data, net, cfg, criterion, optimizer, dataloader, logg
     losses = criterion(loc_scores, loc_targets,
                        class_scores, class_targets,
                        cls_targets_remapped=cls_targets_remapped,
-                       cls_preds_for_neg=class_scores_transform_detached if not cfg.train.model.train_transform_on_negs else None)
+                       cls_preds_for_neg=class_scores_transform_detached if not cfg.train.model.train_transform_on_negs else None,
+                       batch_idx=batch_idx)
 
     if cfg.visualization.train.show_target_remapping:
         visualizer.show_target_remapping(images, class_targets, cls_targets_remapped,
@@ -486,7 +487,7 @@ def trainval_loop(dataloader_train, net, cfg, criterion, optimizer, dataloaders_
             num_steps_for_logging += 1
 
             # train on one batch
-            meters = train_one_batch(batch_data, net, cfg, criterion, optimizer, dataloader_train, logger)
+            meters = train_one_batch(batch_data, net, cfg, criterion, optimizer, dataloader_train, logger, batch_idx=i_batch)
             meters["loading_time"] = t_data_loading
 
             # print meters

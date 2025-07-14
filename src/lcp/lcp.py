@@ -456,10 +456,12 @@ class LCP:
         all_feature_stats = []
         all_reconstruction_errors = []
         all_auxiliary_losses = []
-        
+        print( image_id_all )
         for image_id in image_id_all:
             # 1. 特徵統計計算（基於理論公式）
+            
             feature_stats = self._extract_and_compute_theoretical_statistics(image_id, layer_name)
+            print( image_id , feature_stats )
             if feature_stats:
                 all_feature_stats.append(feature_stats)
             

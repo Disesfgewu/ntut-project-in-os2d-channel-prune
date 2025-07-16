@@ -776,12 +776,13 @@ class LCP:
         )
 
     def prune_layer(self, layer_name, discard_rate=0.5, use_image_num=3, random_seed=42):
-        self.get_channel_selection_and_write_to_db(
-            layer_name   = layer_name,
-            discard_rate = discard_rate,
-            use_image_num= use_image_num,
-            random_seed  = random_seed
-        )
+        if discard_rate != None:
+            self.get_channel_selection_and_write_to_db(
+                layer_name   = layer_name,
+                discard_rate = discard_rate,
+                use_image_num= use_image_num,
+                random_seed  = random_seed
+            )
 
         self._pruner.prune_layer(
             layer_name   = layer_name
@@ -939,21 +940,18 @@ class LCP:
         
         print(f"Found {len(all_layers)} total layers in database")
         print(f"Filtered to {len(pruned_layers)} layers starting with 'net_feature_maps.layer'")
-        
-        for param_name, param_tensor in pruned_state_dict.items():
-            # 找到對應的層名稱
-            print( f"Processing parameter: {param_name}, tensor shape: {param_tensor.shape}")
-            layer_name = self._extract_layer_name_from_param(param_name)
-            print( f"layer_name : {layer_name} / pruned_layers : {pruned_layers} / if layer_name in pruned_layers: {layer_name in pruned_layers}")
-            if layer_name in pruned_layers:
-                # 恢復該參數
-                restored_param = self._restore_single_parameter(
-                    param_name, param_tensor, layer_name, prune_db
-                )
-                restored_state_dict[param_name] = restored_param
-                print(f"Restored parameter: {param_name}")
-            else:
-                # 不需要恢復的參數直接複製
-                restored_state_dict[param_name] = param_tensor
-        
+
+        for layer in pruned_state_dict.items():
+            print( layer )
+
+
         return restored_state_dict
+    
+    def _restore_layer_out_channel(self, layer_name, out_channels_num, keep_indices):
+        pass
+
+    def _restore_layer_in_channel(self, layer_name, in_channels_num, keep_indices):
+        pass
+
+    def _restore_bn_layer(self, layer_name, num_features, keep_indices):
+        pass

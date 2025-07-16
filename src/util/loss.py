@@ -16,7 +16,54 @@ def memory_cleanup():
             torch.cuda.synchronize()
         gc.collect()
 
+import csv
+import os
+from datetime import datetime
 
+class LossLogger:
+    def __init__(self, csv_path="loss_log.csv"):
+        self.csv_path = csv_path
+        # 如果檔案不存在，寫入標題
+        if not os.path.exists(csv_path):
+            with open(csv_path, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([
+                    "timestamp", "batch_idx", "original_loss", "auxiliary_loss", 
+                    "normalized_auxiliary_loss", "total_loss", "normalization_factor",
+                    "auxiliary_weight", "ema_original", "ema_auxiliary"
+                ])
+    
+    def log_loss(self, batch_idx, original_loss, auxiliary_loss, normalized_auxiliary_loss, 
+                 total_loss, normalization_factor, auxiliary_weight, ema_original, ema_auxiliary):
+        """
+        記錄損失數據到 CSV
+        只有當所有損失都 > 0 時才記錄
+        """
+        # 檢查是否有任何損失為 0 或無效
+        if (original_loss <= 0 or auxiliary_loss <= 0 or 
+            normalized_auxiliary_loss <= 0 or total_loss <= 0):
+            return False
+        
+        try:
+            with open(self.csv_path, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([
+                    datetime.now().isoformat(),
+                    batch_idx,
+                    float(original_loss),
+                    float(auxiliary_loss),
+                    float(normalized_auxiliary_loss),
+                    float(total_loss),
+                    float(normalization_factor),
+                    float(auxiliary_weight),
+                    float(ema_original),
+                    float(ema_auxiliary)
+                ])
+            return True
+        except Exception as e:
+            print(f"[LCP Logger] Error writing to CSV: {e}")
+            return False
+        
 class LCPFinetuneCriterion(nn.Module):
     def __init__(self, original_criterion, aux_net, auxiliary_weight=1.0):
         """
@@ -31,6 +78,7 @@ class LCPFinetuneCriterion(nn.Module):
         self.original_criterion = original_criterion
         self.aux_net = aux_net
         self.auxiliary_weight = auxiliary_weight
+        self.loss_logger = LossLogger()
     
     def forward(self, loc_preds, loc_targets, cls_preds, cls_targets,
                 cls_targets_remapped=None, cls_preds_for_neg=None,
@@ -67,6 +115,7 @@ class LCPFinetuneCriterion(nn.Module):
             original_losses = original_result
         
         # 計算並加入輔助損失 - 使用 batch_idx 而不是 batch_data
+        self.get_dataloader().shuffle()
         auxiliary_loss = self.compute_auxiliary_loss_from_batch(batch_idx)
         original_loss = original_losses["loss"]
         
@@ -114,6 +163,20 @@ class LCPFinetuneCriterion(nn.Module):
             print(f"[LCP Loss] Auxiliary weight: {self.auxiliary_weight}")
             print(f"[LCP Loss] Total loss: {total_loss:.6f}")
             
+            # 🔴 記錄有效的損失數據到 CSV
+            log_success = self.loss_logger.log_loss(
+                batch_idx=batch_idx if batch_idx is not None else self.loss_stats['total_batches'],
+                original_loss=original_loss.item(),
+                auxiliary_loss=auxiliary_loss.item(),
+                normalized_auxiliary_loss=normalized_auxiliary.item(),
+                total_loss=total_loss.item(),
+                normalization_factor=normalization_factor,
+                auxiliary_weight=self.auxiliary_weight,
+                ema_original=self.loss_ema['original'],
+                ema_auxiliary=self.loss_ema['auxiliary']
+            )
+
+
             # 🔴 關鍵修改：只包含 Tensor 類型的損失值
             lcp_losses = original_losses.copy()
             lcp_losses["loss"] = total_loss
@@ -256,8 +319,8 @@ class LCPFinetuneCriterion(nn.Module):
           # 🔴 階段3: 極致樣本數量限制
           db = self.get_database()
           
-          # 更嚴格的限制：最多 3 個樣本
-          MAX_SAMPLES = min( 3 , len(image_ids) )
+          # 更嚴格的限制：最多 8 個樣本
+          MAX_SAMPLES = min( 8 , len(image_ids) )
           samples_collected = 0
           total_aux_loss = torch.tensor(0.0, device=device, requires_grad=True)
           

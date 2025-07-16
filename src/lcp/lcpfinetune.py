@@ -46,9 +46,6 @@ class LCPFineTune:
         if self.cfg.is_cuda and next(self._prune_net.parameters()).device.type != 'cuda':
             self._prune_net = self._prune_net.cuda()
 
-    def criterion(self, aux_net):
-        pass
-
     def start_finetune(self, criterion, finetune_iterations=1000, reconstruction_weight=0.1, 
                       dataloaders_eval=None):
         """
@@ -60,7 +57,6 @@ class LCPFineTune:
             reconstruction_weight: 重建損失權重 (預留參數)
             dataloaders_eval: 評估數據加載器列表
         """
-        
         
         # 直接呼叫 trainval_loop
         trainval_loop(

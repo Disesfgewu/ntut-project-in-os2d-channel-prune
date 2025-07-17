@@ -12,30 +12,43 @@ class LCPReconstruction:
             'conv1',
             'layer1.0.conv1',
             'layer1.0.conv2',
+            'layer1.0.conv3',
             'layer1.1.conv1',
             'layer1.1.conv2',
+            'layer1.1.conv3',
             'layer1.2.conv1',
             'layer1.2.conv2',
+            'layer1.2.conv3',
             'layer2.0.conv1',
             'layer2.0.conv2',
+            'layer2.0.conv3',
             'layer2.1.conv1',
             'layer2.1.conv2',
+            'layer2.1.conv3',
             'layer2.2.conv1',
             'layer2.2.conv2',
+            'layer2.2.conv3',
             'layer2.3.conv1',
             'layer2.3.conv2',
+            'layer2.3.conv3',
             'layer3.0.conv1',
             'layer3.0.conv2',
+            'layer3.0.conv3',
             'layer3.1.conv1',
             'layer3.1.conv2',
+            'layer3.1.conv3',
             'layer3.2.conv1',
             'layer3.2.conv2',
+            'layer3.2.conv3',
             'layer3.3.conv1',
             'layer3.3.conv2',
+            'layer3.3.conv3',
             'layer3.4.conv1',
             'layer3.4.conv2',
+            'layer3.4.conv3',
             'layer3.5.conv1',
             'layer3.5.conv2',
+            'layer3.5.conv3',
         ]
 
         self._init_for_map()
@@ -204,7 +217,6 @@ class LCPReconstruction:
         Returns:
             torch.Tensor: 恢復後的 BatchNorm 參數 [orig_num]
         """
-        print( bn_param_tensor )
         if len(bn_param_tensor.shape) != 1:
             return None
         
@@ -225,9 +237,9 @@ class LCPReconstruction:
         
         return bn_param_tensor
 
-    def get_dependency(self, layer_name):
+    def get_dependency(self, layer_name, verify=True):
         layer_name = f"net_feature_maps.{layer_name}" if not layer_name.startswith("net_feature_maps") else layer_name
-        return self._pruner.resolve_layer_dependencies(layer_name)
+        return self._pruner.resolve_layer_dependencies(layer_name, verify=verify)
 
     def _get_channel_list(self, layer_name):
         layer_name = f"net_feature_maps.{layer_name}" if not layer_name.startswith("net_feature_maps") else layer_name
@@ -257,9 +269,9 @@ class LCPReconstruction:
                 return layer_name[:-len(f)]
         return layer_name
 
-    def _extract_all_channel_information_for_layers(self, layers):
+    def _extract_all_channel_information_for_layers(self, layers, verify=True):
         for layer in layers:
-            dependency = self.get_dependency(f'net_feature_maps.{layer}')
+            dependency = self.get_dependency(f'net_feature_maps.{layer}', verify=verify)
             if dependency['target'] != None:
                 dependency['target'] = dependency['target'].replace('net_feature_maps.', '')
                 self.map[dependency['target']]['out'] = self._get_channel_list(layer)
@@ -325,7 +337,7 @@ class LCPReconstruction:
         
         return checkpoint
 
-    def _restore_pruned_parameters(self, pruned_state_dict, prune_db):
+    def _restore_pruned_parameters(self, pruned_state_dict, prune_db, verify=True):
         """
         恢復剪枝參數到原始維度
         Args:
@@ -342,22 +354,27 @@ class LCPReconstruction:
         # print( pruned_layers )
         print(f"Found {len(all_layers)} total layers in database")
         print(f"Filtered to {len(pruned_layers)} layers starting with 'layer'")
-        self._extract_all_channel_information_for_layers(pruned_layers)
+        self._extract_all_channel_information_for_layers(pruned_layers, verify)
         
         for layer_name, params in pruned_state_dict.items():
             layer = self._extract_layer_name(layer_name).replace('net_feature_maps.', '')
             layer = self._reshape_layer_name(layer)
             try:
-                if layer.endswith('conv1') or layer.endswith('conv2'):
+                if layer.endswith('conv1') or layer.endswith('conv2') or layer.endswith('conv3'):
                     if self.map[layer]['out'] != []:
                         self._pruned_layers.append(layer)
                         out_channels_update = self.update_output_channel(params, self.map[layer]['out'], self.map[layer]['original_out_channel_num'])
                         restored_state_dict[layer_name] = out_channels_update
-                    elif self.map[layer]['in'] != []:
+                        print(f"✅ 恢復輸出通道: {layer_name}")
+                    else:
+                        # print(f"Skipping layer '{layer_name}' as it is not pruned")
+                        restored_state_dict[layer_name] = params
+                    if self.map[layer]['in'] != []:
                         in_channels_update = self.update_input_channel(params, self.map[layer]['in'], self.map[layer]['original_in_channel_num'])
                         restored_state_dict[layer_name] = in_channels_update
+                        print(f"✅ 恢復輸入通道: {layer_name}")
                     else:
-                        print(f"Skipping layer '{layer_name}' as it is not pruned")
+                        # print(f"Skipping layer '{layer_name}' as it is not pruned")
                         restored_state_dict[layer_name] = params
                 elif layer.endswith('bn1') or layer.endswith('bn2'):
                     get_layer = layer.replace('bn', 'conv')
@@ -369,18 +386,18 @@ class LCPReconstruction:
                             self.map[get_layer]['original_bn_features']
                         )
                         if bn_features_update is None:
-                            print(f"Skipping layer '{layer_name}' as it has no valid BatchNorm parameters")
+                            # print(f"Skipping layer '{layer_name}' as it has no valid BatchNorm parameters")
                             continue
                         restored_state_dict[layer_name] = bn_features_update
                         print(f"✅ 恢復 BatchNorm 參數: {layer_name}")
                     else:
-                        print(f"Skipping layer '{layer_name}' as it is not pruned")
+                        # print(f"Skipping layer '{layer_name}' as it is not pruned")
                         restored_state_dict[layer_name] = params
                 else:
-                    print(f"Skipping layer '{layer_name}' as it is not pruned")
+                    # print(f"Skipping layer '{layer_name}' as it is not pruned")
                     restored_state_dict[layer_name] = params
             except Exception as e:
-                print(f"Skipping layer '{layer_name}' as it is not pruned")
+                # print(f"Skipping layer '{layer_name}' as it is not pruned")
                 restored_state_dict[layer_name] = params
             
         return restored_state_dict

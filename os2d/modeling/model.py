@@ -325,10 +325,34 @@ class Os2dModel(nn.Module):
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
-            self.logger.info(f"Failed to load the full model, trying to init feature extractors {e}")
-            self._load_network(self.net_label_features.net_class_features, path=path)
-            if not self.merge_branch_parameters:
-                self._load_network(self.net_feature_maps, model_data=self.net_label_features.net_class_features.state_dict())
+            try:
+                from src.util.prune_db import PruneDBControler
+                from src.lcp.recontruction import LCPReconstruction
+                from src.lcp.pruner import Pruner
+                self.logger.info("Restoring pruned parameters to original dimensions...")
+                checkpoint = torch.load(path, map_location='cuda' if self.is_cuda else 'cpu')
+                prune_db = PruneDBControler( path = './src/db/prune_channel_information.csv' )
+                pruner = Pruner( prune_network=checkpoint['net'] )
+                pruner.set_prune_db( prune_db )
+                lcp_reconstruction = LCPReconstruction( pruner=pruner , prune_db=prune_db )
+    
+                # 恢復剪枝參數到原始維度
+                restored_state_dict = lcp_reconstruction._restore_pruned_parameters(
+                    checkpoint.get("net", {}), 
+                    prune_db=prune_db,
+                    verify=False
+                )
+                # 載入恢復後的網路狀態
+                if restored_state_dict:
+                    self.load_state_dict(restored_state_dict, strict=False)
+                    self.logger.info("Successfully loaded restored pruned network state")
+                else:
+                    self.logger.info("No network state found in checkpoint")
+            except Exception as e:
+                self.logger.info(f"Failed to load the full model, trying to init feature extractors {e}")
+                self._load_network(self.net_label_features.net_class_features, path=path)
+                if not self.merge_branch_parameters:
+                    self._load_network(self.net_feature_maps, model_data=self.net_label_features.net_class_features.state_dict())
 
         if init_affine_transform_path:
             try:

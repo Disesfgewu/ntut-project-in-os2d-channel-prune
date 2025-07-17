@@ -13,7 +13,7 @@ from src.util.detection import generate_detection_boxes
 from src.util.visualize import visualize_boxes_on_image
 
 class LCP:
-    def __init__(self, net, aux_net, dataloader, img_normalization=None):
+    def __init__(self, net, aux_net=None, dataloader=None, img_normalization=None):
         # 預設所有模型都在 CPU 上（按需 GPU 策略）
         self._net = net.cpu()  # 原始網路
         self._prune_net = copy.deepcopy(net).cpu()  # 剪枝網路也在 CPU
@@ -789,8 +789,8 @@ class LCP:
         )
 
     def debug_for_test_vision(self, dataloader_train, img_normalization, box_coder, cfg, count=1):
-        image_id = 0
-        class_id = 0
+        image_id = random.choice( list(map(int, self._get_db().get_image_ids())) )
+        class_id = random.choice(list(map(int, self._get_db().get_class_ids_by_image_id(image_id))))
         self._prune_net = self._prune_net.cuda()
         get, labels, scores = generate_detection_boxes(dataloader_train, self._prune_net, img_normalization, box_coder, image_id, class_id, cfg, class_num=count*2)
         from os2d.modeling.box_coder import BoxList
@@ -836,122 +836,3 @@ class LCP:
         )
         
         return checkpoint_file
-
-    def load_checkpoint_with_pruned_net(self, checkpoint_file_path, optimizer=None, model_name=None):
-        """
-        從檔案載入剪枝網路和 optimizer，自動處理參數維度恢復
-        
-        Args:
-            checkpoint_file_path (str): checkpoint 檔案路徑
-            optimizer (torch.optim.Optimizer, optional): 要載入狀態的 optimizer
-            model_name (str, optional): 模型名稱（用於日誌記錄）
-        
-        Returns:
-            dict: 載入的 checkpoint 數據，包含額外欄位
-        """
-        logger = logging.getLogger("OS2D.checkpoint")
-        
-        try:
-            # 檢查檔案是否存在
-            if not os.path.exists(checkpoint_file_path):
-                raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_file_path}")
-            
-            print(f"Loading checkpoint from {checkpoint_file_path}")
-            
-            # 載入 checkpoint
-            checkpoint = torch.load(checkpoint_file_path, map_location='cpu')
-            
-            # 檢查是否有剪枝記錄
-            if hasattr(self, '_prune_db') and self._prune_db is not None:
-                print("Restoring pruned parameters to original dimensions...")
-                
-                # 恢復剪枝參數到原始維度
-                restored_state_dict = self._restore_pruned_parameters(
-                    checkpoint.get("net", {}), 
-                    self._prune_db
-                )
-
-                # 載入恢復後的網路狀態
-                if restored_state_dict:
-                    self._prune_net.load_state_dict(restored_state_dict)
-                    print("Successfully loaded restored pruned network state")
-                else:
-                    logger.warning("No network state found in checkpoint")
-            else:
-                # 沒有剪枝記錄，直接載入（可能會失敗）
-                logger.warning("No prune database found, attempting direct load...")
-                if "net" in checkpoint:
-                    self._prune_net.load_state_dict(checkpoint["net"])
-                    print("Successfully loaded pruned network state")
-                else:
-                    logger.warning("No network state found in checkpoint")
-            
-            # 載入 optimizer 狀態（如果提供）
-            if optimizer is not None and "optimizer" in checkpoint:
-                optimizer.load_state_dict(checkpoint["optimizer"])
-                print("Successfully loaded optimizer state")
-            elif optimizer is not None:
-                logger.warning("Optimizer provided but no optimizer state found in checkpoint")
-            
-            # 檢查是否需要移到 GPU
-            if next(self._prune_net.parameters()).device.type == 'cuda':
-                self._prune_net = self._prune_net.cuda()
-                print("Moved pruned network to CUDA")
-            
-            # 返回 checkpoint 以便存取額外欄位
-            model_info = f" for model '{model_name}'" if model_name else ""
-            print(f"Successfully loaded checkpoint{model_info}")
-            
-            return checkpoint
-            
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except FileNotFoundError as e:
-            logger.error(f"Checkpoint file not found: {e}")
-            raise
-        except torch.serialization.pickle.UnpicklingError as e:
-            logger.error(f"Failed to load checkpoint - corrupted file: {e}")
-            raise
-        except Exception as e:
-            print(f"Restored {len(restored_state_dict)} parameters from pruned state")
-            print(f"Restore state : {restored_state_dict}")
-            logger.error(f"Could not load checkpoint for some reason: {e}")
-            raise
-
-    def _restore_pruned_parameters(self, pruned_state_dict, prune_db):
-        """
-        恢復剪枝參數到原始維度
-        
-        Args:
-            pruned_state_dict: 剪枝後的參數字典
-            prune_db: 剪枝資料庫控制器
-        
-        Returns:
-            dict: 恢復後的參數字典
-        """
-        logger = logging.getLogger("OS2D.checkpoint")
-        restored_state_dict = {}
-        
-        # 獲取所有已記錄的層
-        all_layers = prune_db.get_all_layers()
-    
-        # 過濾只保留以 'layer' 開頭的層名稱
-        pruned_layers = [layer for layer in all_layers if layer.startswith('net_feature_maps.layer')]
-        
-        print(f"Found {len(all_layers)} total layers in database")
-        print(f"Filtered to {len(pruned_layers)} layers starting with 'net_feature_maps.layer'")
-
-        for layer in pruned_state_dict.items():
-            print( layer )
-
-
-        return restored_state_dict
-    
-    def _restore_layer_out_channel(self, layer_name, out_channels_num, keep_indices):
-        pass
-
-    def _restore_layer_in_channel(self, layer_name, in_channels_num, keep_indices):
-        pass
-
-    def _restore_bn_layer(self, layer_name, num_features, keep_indices):
-        pass

@@ -758,8 +758,8 @@ class Pruner:
             
         except Exception as e:
             print(f"[WARNING] 更新層屬性失敗: {e}")
-
-    def resolve_layer_dependencies(self, target_layer):
+    
+    def resolve_layer_dependencies(self, target_layer, verify=True):
         """
         解析目標層級的依賴關係，確定剪枝時需要同步處理的層級
         
@@ -795,7 +795,7 @@ class Pruner:
             layer_parts = target_layer.replace('net_feature_maps.', '').split('.')
             
             # 2. 確定 BatchNorm 層
-            batch_norm_layer = self._find_corresponding_batch_norm(target_layer, layer_parts)
+            batch_norm_layer = self._find_corresponding_batch_norm(target_layer, layer_parts, verify=verify)
             dependencies['batch_norm'] = batch_norm_layer
             
             # 3. 分析層級類型和位置
@@ -803,7 +803,7 @@ class Pruner:
             dependencies['dependency_type'] = layer_type
             
             # 4. 找出下游依賴層級
-            downstream_layers = self._find_downstream_layers(target_layer, layer_parts, block_info)
+            downstream_layers = self._find_downstream_layers(target_layer, layer_parts, block_info, verify=verify)
             dependencies['downstream_layers'] = downstream_layers
             
             # 5. 處理 ResNet 跳躍連接和 downsample
@@ -829,7 +829,7 @@ class Pruner:
             print(f"[ERROR] 層級依賴分析失敗: {e}")
             return dependencies
 
-    def _find_corresponding_batch_norm(self, target_layer, layer_parts):
+    def _find_corresponding_batch_norm(self, target_layer, layer_parts, verify=True):
         """找出對應的 BatchNorm 層"""
         
         # 常見的 conv -> bn 對應關係
@@ -848,7 +848,9 @@ class Pruner:
             bn_layer = 'net_feature_maps.' + '.'.join(bn_parts)
             
             # 驗證 BatchNorm 層是否存在
-            if self._verify_layer_exists(bn_layer):
+            if verify and self._verify_layer_exists(bn_layer):
+                return bn_layer
+            elif not verify:
                 return bn_layer
         
         return None
@@ -878,7 +880,7 @@ class Pruner:
         
         return 'unknown', {}
 
-    def _find_downstream_layers(self, target_layer, layer_parts, block_info):
+    def _find_downstream_layers(self, target_layer, layer_parts, block_info, verify=True):
         """找出下游依賴層級"""
         downstream_layers = []
         
@@ -894,7 +896,7 @@ class Pruner:
             
         elif block_info.get('conv_position') == 'conv3':
             # conv3 -> 下一個 block 的 conv1 或下一個 layer group
-            downstream_layers.extend(self._find_next_block_layers(layer_parts, block_info))
+            downstream_layers.extend(self._find_next_block_layers(layer_parts, block_info, verify=verify))
         
         return downstream_layers
 
@@ -955,7 +957,7 @@ class Pruner:
             return False
 
 
-    def _find_next_block_layers(self, layer_parts, block_info):
+    def _find_next_block_layers(self, layer_parts, block_info, verify=True):
         """找出下一個 block 的相關層級"""
         next_layers = []
         
@@ -964,7 +966,9 @@ class Pruner:
         
         # 嘗試找下一個 block
         next_block_layer = f"net_feature_maps.{current_group}.{current_block + 1}.conv1"
-        if self._verify_layer_exists(next_block_layer):
+        if verify and self._verify_layer_exists(next_block_layer):
+            next_layers.append(next_block_layer)
+        elif not verify:
             next_layers.append(next_block_layer)
         else:
             # 嘗試下一個 layer group

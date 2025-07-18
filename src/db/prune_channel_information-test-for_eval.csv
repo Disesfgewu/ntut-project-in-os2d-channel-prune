@@ -1,0 +1,3 @@
+layer,original_channel_num,num_of_keep_channel,keep_index
+net_feature_maps.layer1.0.conv1,64,10,"[1, 4, 13, 14, 24, 29, 54, 60, 62, 63]"
+layer1.0.conv1,10,10,"[1, 4, 13, 14, 24, 29, 54, 60, 62, 63]"

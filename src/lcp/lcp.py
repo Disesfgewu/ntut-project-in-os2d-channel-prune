@@ -12,6 +12,42 @@ from os2d.utils import get_image_size_after_resize_preserving_aspect_ratio
 from src.util.detection import generate_detection_boxes
 from src.util.visualize import visualize_boxes_on_image
 
+def convert_tensor_to_box_list(tensor):
+    return [
+        ((box[0].item(), box[1].item()),
+         (box[2].item(), box[3].item()))
+        for box in tensor
+    ]
+
+def covert_point_back_by_ratio(boxes, w, h):
+    """
+    将检测框坐标从缩放后的图像坐标系转换回原始图像坐标系
+    
+    Args:
+        boxes: 缩放后图像上的检测框列表，格式 [((x1,y1), (x2,y2)), ...]
+        original_size: 原始图像尺寸 (width, height)
+        resized_size: 缩放后图像尺寸 (width, height)
+    
+    Returns:
+        list: 转换后的原始图像坐标系中的检测框列表
+    """
+    
+    
+    converted_boxes = []
+    for box in boxes:
+        # 解包坐标点
+        (x1, y1), (x2, y2) = box
+        
+        # 应用缩放比例转换坐标
+        orig_x1 = x1 / w
+        orig_y1 = y1 / h
+        orig_x2 = x2 / w
+        orig_y2 = y2 / h
+        
+        converted_boxes.append(((orig_x1, orig_y1), (orig_x2, orig_y2)))
+    print( converted_boxes )
+    return converted_boxes
+
 class LCP:
     def __init__(self, net, aux_net=None, dataloader=None, img_normalization=None):
         # 預設所有模型都在 CPU 上（按需 GPU 策略）
@@ -855,6 +891,576 @@ class LCP:
         
         # 存成新檔名
         img.save(f"./visualized_images/{image_id}_{class_id}_annotation.png")
+
+    def _compute_iou(self, detections, ground_truths):
+        """
+        計算檢測結果與真實邊界框之間的 IoU，使用雙射映射確保一一對應
+        
+        Args:
+            detections: 檢測結果列表，每個元素為 ((x_min, y_min), (x_max, y_max))
+            ground_truths: 真實邊界框列表，每個元素為 ((x_min, y_min), (x_max, y_max))
+        Returns:
+            dict: 包含匹配結果和統計信息的字典
+        """
+        import numpy as np
+        try:
+            from scipy.optimize import linear_sum_assignment
+            use_hungarian = True
+        except ImportError:
+            use_hungarian = False
+            print("Warning: scipy not available, using greedy matching instead")
+        
+        if not detections or not ground_truths:
+            return {
+                'iou_matrix': np.array([]),
+                'matched_pairs': [],
+                'total_iou': 0.0,
+                'mean_iou': 0.0,
+                'detection_matches': [],
+                'gt_matches': [],
+                'unmatched_detections': list(range(len(detections))),
+                'unmatched_gts': list(range(len(ground_truths))),
+                'num_matched': 0
+            }
+        
+        num_detections = len(detections)
+        num_ground_truths = len(ground_truths)
+        
+        # 建立 IoU 矩陣
+        iou_matrix = np.zeros((num_detections, num_ground_truths))
+        
+        # 計算所有可能配對的 IoU
+        for i, detection in enumerate(detections):
+            (d_x1, d_y1), (d_x2, d_y2) = detection
+            
+            for j, ground_truth in enumerate(ground_truths):
+                (t_x1, t_y1), (t_x2, t_y2) = ground_truth
+                
+                # 計算交集區域
+                inter_x1 = max(d_x1, t_x1)
+                inter_y1 = max(d_y1, t_y1)
+                inter_x2 = min(d_x2, t_x2)
+                inter_y2 = min(d_y2, t_y2)
+                
+                # 檢查是否有交集
+                if inter_x2 <= inter_x1 or inter_y2 <= inter_y1:
+                    iou_matrix[i, j] = 0.0
+                    continue
+                
+                # 計算面積
+                inter_area = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
+                d_area = (d_x2 - d_x1) * (d_y2 - d_y1)
+                t_area = (t_x2 - t_x1) * (t_y2 - t_y1)
+                union_area = d_area + t_area - inter_area
+                
+                # 計算 IoU
+                iou_matrix[i, j] = inter_area / union_area if union_area > 0 else 0.0
+        
+        # 選擇匹配算法
+        if use_hungarian:
+            # 使用匈牙利算法（最優匹配）
+            matched_pairs, detection_matches, gt_matches = self._hungarian_matching(
+                iou_matrix, num_detections, num_ground_truths)
+        else:
+            # 使用貪心算法（快速匹配）
+            matched_pairs, detection_matches, gt_matches = self._greedy_matching(
+                iou_matrix, num_detections, num_ground_truths)
+        
+        # 計算統計信息
+        total_iou = sum(pair[2] for pair in matched_pairs)
+        mean_iou = total_iou / len(matched_pairs) if matched_pairs else 0.0
+        
+        # 找到未匹配的框
+        matched_detection_indices = [pair[0] for pair in matched_pairs]
+        matched_gt_indices = [pair[1] for pair in matched_pairs]
+        
+        unmatched_detections = [i for i in range(num_detections) if i not in matched_detection_indices]
+        unmatched_gts = [i for i in range(num_ground_truths) if i not in matched_gt_indices]
+        
+        return {
+            'iou_matrix': iou_matrix,
+            'matched_pairs': matched_pairs,
+            'total_iou': total_iou,
+            'mean_iou': mean_iou,
+            'detection_matches': detection_matches,
+            'gt_matches': gt_matches,
+            'unmatched_detections': unmatched_detections,
+            'unmatched_gts': unmatched_gts,
+            'num_matched': len(matched_pairs)
+        }
+
+    def _hungarian_matching(self, iou_matrix, num_detections, num_ground_truths):
+        """使用匈牙利算法進行最優匹配"""
+        from scipy.optimize import linear_sum_assignment
+        
+        # 將 IoU 矩陣轉換為成本矩陣
+        cost_matrix = 1 - iou_matrix
+        
+        # 處理矩陣大小不匹配的情況
+        if num_detections != num_ground_truths:
+            max_size = max(num_detections, num_ground_truths)
+            square_cost_matrix = np.ones((max_size, max_size))
+            square_cost_matrix[:num_detections, :num_ground_truths] = cost_matrix
+            
+            row_indices, col_indices = linear_sum_assignment(square_cost_matrix)
+            
+            # 過濾掉填充的部分
+            valid_matches = []
+            for r, c in zip(row_indices, col_indices):
+                if r < num_detections and c < num_ground_truths:
+                    valid_matches.append((r, c))
+        else:
+            row_indices, col_indices = linear_sum_assignment(cost_matrix)
+            valid_matches = list(zip(row_indices, col_indices))
+        
+        # 組織匹配結果
+        matched_pairs = []
+        detection_matches = [-1] * num_detections
+        gt_matches = [-1] * num_ground_truths
+        
+        for det_idx, gt_idx in valid_matches:
+            iou_value = iou_matrix[det_idx, gt_idx]
+            matched_pairs.append((det_idx, gt_idx, iou_value))
+            detection_matches[det_idx] = gt_idx
+            gt_matches[gt_idx] = det_idx
+        
+        return matched_pairs, detection_matches, gt_matches
+
+    def _greedy_matching(self, iou_matrix, num_detections, num_ground_truths):
+        """使用貪心算法進行快速匹配"""
+        import numpy as np
+        
+        matched_pairs = []
+        used_detections = set()
+        used_gts = set()
+        
+        # 創建候選配對並排序
+        candidates = []
+        for i in range(num_detections):
+            for j in range(num_ground_truths):
+                if iou_matrix[i, j] > 0:
+                    candidates.append((iou_matrix[i, j], i, j))
+        
+        candidates.sort(reverse=True)
+        
+        # 貪心選擇
+        for iou_value, det_idx, gt_idx in candidates:
+            if det_idx not in used_detections and gt_idx not in used_gts:
+                matched_pairs.append((det_idx, gt_idx, iou_value))
+                used_detections.add(det_idx)
+                used_gts.add(gt_idx)
+        
+        # 創建匹配映射
+        detection_matches = [-1] * num_detections
+        gt_matches = [-1] * num_ground_truths
+        
+        for det_idx, gt_idx, _ in matched_pairs:
+            detection_matches[det_idx] = gt_idx
+            gt_matches[gt_idx] = det_idx
+        
+        return matched_pairs, detection_matches, gt_matches
+
+    def evaluate(self, dataloader_train, img_normalization, box_coder, cfg, count=100, iou_threshold=0.5):
+        """
+        評估剪枝網路在訓練集上的性能
+        
+        Args:
+            dataloader_train: 訓練數據加載器
+            img_normalization: 圖像正規化參數
+            box_coder: 邊界框編碼器
+            cfg: 配置參數
+            count: 評估的圖像數量
+            iou_threshold: IoU 閾值，用於判斷檢測是否正確
+        
+        Returns:
+            dict: 評估結果，包含 precision, recall, f1_score, mAP 等指標
+        """
+        import torch
+        import numpy as np
+        import random
+        from collections import defaultdict
+        
+        self._prune_net = self._prune_net.cuda()
+        self._prune_net.eval()
+        
+        # 統計變量
+        total_detections = 0
+        total_ground_truths = 0
+        total_matched_pairs = 0
+        total_iou_sum = 0.0
+        
+        # 用於計算 mAP 的變量
+        all_detection_scores = []
+        all_detection_matches = []
+        
+        # 類別統計
+        class_stats = defaultdict(lambda: {
+            'tp': 0, 'fp': 0, 'fn': 0, 'total_gt': 0, 'total_det': 0,
+            'total_iou': 0.0, 'matched_pairs': 0
+        })
+        
+        # 詳細統計
+        evaluation_details = []
+        
+        print(f"開始評估 {count} 張圖像...")
+        
+        with torch.no_grad():
+            for eval_idx in range(count):
+                try:
+                    # 隨機選擇圖像和類別
+                    image_id = random.choice(list(map(int, self._get_db().get_image_ids())))
+                    available_classes = list(map(int, self._get_db().get_class_ids_by_image_id(image_id)))
+                    
+                    if not available_classes:
+                        continue
+                    
+                    annotation = dataloader_train.get_image_annotation_for_imageid(image_id)
+                    img = dataloader_train._get_dataset_image_by_id(image_id)
+                    w, h = img.size
+                    
+                    # 組織真實標註數據
+                    t_points = {}
+                    for class_id in available_classes:
+                        t_points[class_id] = []
+
+                    for obj_idx in range(len(annotation)):
+                        # 邊界框座標 (x_min, y_min, x_max, y_max)
+                        class_id = annotation.get_field('labels')[obj_idx].item()
+                        if class_id not in available_classes:
+                            continue
+
+                        bbox = annotation.bbox_xyxy[obj_idx].tolist()
+                        point1 = (bbox[0] / w, bbox[1] / h )  # (x_min, y_min)
+                        point2 = (bbox[2] / w, bbox[3] / h )  # (x_max, y_max)
+            
+                        t_points[class_id].append((point1, point2))
+                        
+                        # 困難標記 (如果存在)
+                        if annotation.has_field('difficult'):
+                            is_difficult = annotation.get_field('difficult')[obj_idx].item()
+                            difficult = f", Difficult: {bool(is_difficult)}"
+                        else:
+                            difficult = ""
+
+                        # 寫入物件資訊
+                        # print(f"物件 {obj_idx}: BBox: {bbox}, Class ID: {class_id}{difficult}")
+                    
+                    # 選擇一個類別進行評估
+                    class_id = random.choice(available_classes)
+                    
+                    # 生成檢測結果
+                    get, labels, scores = generate_detection_boxes(
+                        dataloader_train, self._prune_net, img_normalization, box_coder, 
+                        image_id, class_id, cfg, class_num=len(t_points[class_id])
+                    )
+                    
+                    original_image = dataloader_train._get_dataset_image_by_id(image_id)
+                    orig_h, orig_w = original_image.size[1], original_image.size[0]
+                    
+                    image_height, image_width = get_image_size_after_resize_preserving_aspect_ratio(h=original_image.size[1],
+                                                                                        w=original_image.size[0],
+                                                                                        target_size=1500)
+                    convert_boxes = convert_tensor_to_box_list(get)
+                    converted_boxes = covert_point_back_by_ratio(
+                        convert_boxes,
+                        w=image_width,
+                        h=image_height
+                    )
+                    # 轉換檢測結果格式
+                    # points = []
+                    # if get is not None:
+                    #     gets = get.tolist()
+                    #     for g in gets:
+                    #         point1 = (g[0], g[1])
+                    #         point2 = (g[2], g[3])
+                    #         points.append((point1, point2))
+                    print( f"converted_boxes: {converted_boxes}, tpoints: {t_points[class_id]}" )
+                    # 計算 IoU 使用雙射映射
+                    points = converted_boxes
+                    iou_result = self._compute_iou(points, t_points[class_id])
+                    
+                    # 統計檢測數量
+                    num_detections = len(points)
+                    num_ground_truths = len(t_points[class_id])
+                    num_matched = iou_result['num_matched']
+                    
+                    total_detections += num_detections
+                    total_ground_truths += num_ground_truths
+                    total_matched_pairs += num_matched
+                    total_iou_sum += iou_result['total_iou']
+                    
+                    # 分析匹配結果
+                    matched_pairs = iou_result['matched_pairs']
+                    
+                    # 計算 True Positives (IoU >= threshold)
+                    tp = sum(1 for _, _, iou in matched_pairs if iou >= iou_threshold)
+                    
+                    # False Positives = 總檢測數 - True Positives
+                    fp = num_detections - tp
+                    
+                    # False Negatives = 總真實標註數 - True Positives
+                    fn = num_ground_truths - tp
+                    
+                    # 更新類別統計
+                    class_stats[class_id]['tp'] += tp
+                    class_stats[class_id]['fp'] += fp
+                    class_stats[class_id]['fn'] += fn
+                    class_stats[class_id]['total_gt'] += num_ground_truths
+                    class_stats[class_id]['total_det'] += num_detections
+                    class_stats[class_id]['total_iou'] += iou_result['total_iou']
+                    class_stats[class_id]['matched_pairs'] += num_matched
+                    
+                    # 記錄用於 mAP 計算的數據
+                    if scores is not None:
+                        for i, (det_idx, gt_idx, iou) in enumerate(matched_pairs):
+                            score = scores[det_idx] if det_idx < len(scores) else 0.0
+                            all_detection_scores.append(score)
+                            all_detection_matches.append(iou >= iou_threshold)
+                        
+                        # 為未匹配的檢測添加 False Positive 記錄
+                        for det_idx in iou_result['unmatched_detections']:
+                            if det_idx < len(scores):
+                                all_detection_scores.append(scores[det_idx])
+                                all_detection_matches.append(False)
+                    
+                    # 記錄詳細評估結果
+                    evaluation_details.append({
+                        'image_id': image_id,
+                        'class_id': class_id,
+                        'num_detections': num_detections,
+                        'num_ground_truths': num_ground_truths,
+                        'num_matched': num_matched,
+                        'mean_iou': iou_result['mean_iou'],
+                        'tp': tp,
+                        'fp': fp,
+                        'fn': fn,
+                        'matched_pairs': matched_pairs,
+                        'unmatched_detections': len(iou_result['unmatched_detections']),
+                        'unmatched_gts': len(iou_result['unmatched_gts'])
+                    })
+                    
+                    # 進度顯示
+                    if (eval_idx + 1) % 10 == 0:
+                        current_mean_iou = total_iou_sum / total_matched_pairs if total_matched_pairs > 0 else 0
+                        print(f"已評估 {eval_idx + 1}/{count} 張圖像，當前平均 IoU: {current_mean_iou:.4f}")
+                        
+                except Exception as e:
+                    print(f"評估第 {eval_idx + 1} 張圖像時發生錯誤: {e}")
+                    continue
+        
+        # 計算總體指標
+        total_tp = sum(stats['tp'] for stats in class_stats.values())
+        total_fp = sum(stats['fp'] for stats in class_stats.values())
+        total_fn = sum(stats['fn'] for stats in class_stats.values())
+        
+        precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
+        recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
+        f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        
+        overall_mean_iou = total_iou_sum / total_matched_pairs if total_matched_pairs > 0 else 0
+        
+        # 計算 mAP
+        map_score = 0.0
+        if all_detection_scores and total_ground_truths > 0:
+            # 按分數排序
+            sorted_indices = np.argsort(all_detection_scores)[::-1]
+            sorted_matches = [all_detection_matches[i] for i in sorted_indices]
+            
+            # 計算累積 TP 和 precision/recall 曲線
+            tp_cumsum = np.cumsum(sorted_matches)
+            precision_curve = tp_cumsum / (np.arange(len(tp_cumsum)) + 1)
+            recall_curve = tp_cumsum / total_ground_truths
+            
+            # 計算 AP (使用 11 點插值法)
+            ap = 0
+            for t in np.arange(0, 1.1, 0.1):
+                if np.sum(recall_curve >= t) == 0:
+                    p = 0
+                else:
+                    p = np.max(precision_curve[recall_curve >= t])
+                ap += p / 11
+            map_score = ap
+        
+        # 計算各類別指標
+        class_metrics = {}
+        for class_id, stats in class_stats.items():
+            if stats['total_gt'] > 0:
+                class_precision = stats['tp'] / (stats['tp'] + stats['fp']) if (stats['tp'] + stats['fp']) > 0 else 0
+                class_recall = stats['tp'] / (stats['tp'] + stats['fn']) if (stats['tp'] + stats['fn']) > 0 else 0
+                class_f1 = 2 * (class_precision * class_recall) / (class_precision + class_recall) if (class_precision + class_recall) > 0 else 0
+                class_mean_iou = stats['total_iou'] / stats['matched_pairs'] if stats['matched_pairs'] > 0 else 0
+                
+                class_metrics[class_id] = {
+                    'precision': class_precision,
+                    'recall': class_recall,
+                    'f1_score': class_f1,
+                    'mean_iou': class_mean_iou,
+                    'tp': stats['tp'],
+                    'fp': stats['fp'],
+                    'fn': stats['fn'],
+                    'total_gt': stats['total_gt'],
+                    'total_det': stats['total_det'],
+                    'matched_pairs': stats['matched_pairs']
+                }
+        
+        # 編譯最終結果
+        results = {
+            'overall_metrics': {
+                'precision': precision,
+                'recall': recall,
+                'f1_score': f1_score,
+                'mean_iou': overall_mean_iou,
+                'map': map_score,
+                'total_matched_pairs': total_matched_pairs,
+                'matching_rate': total_matched_pairs / max(total_detections, total_ground_truths) if max(total_detections, total_ground_truths) > 0 else 0
+            },
+            'class_metrics': class_metrics,
+            'evaluation_details': evaluation_details,
+            'bijection_stats': {
+                'total_detections': total_detections,
+                'total_ground_truths': total_ground_truths,
+                'total_matched_pairs': total_matched_pairs,
+                'unmatched_detections': total_detections - total_matched_pairs,
+                'unmatched_gts': total_ground_truths - total_matched_pairs
+            },
+            'evaluation_params': {
+                'iou_threshold': iou_threshold,
+                'evaluated_images': count,
+                'model_type': 'pruned_network'
+            }
+        }
+        
+        # 打印結果摘要
+        print("\n=== 雙射映射評估結果摘要 ===")
+        print(f"總體精確度 (Precision): {precision:.4f}")
+        print(f"總體召回率 (Recall): {recall:.4f}")
+        print(f"總體 F1 分數: {f1_score:.4f}")
+        print(f"總體平均 IoU: {overall_mean_iou:.4f}")
+        print(f"平均精確度 (mAP): {map_score:.4f}")
+        print(f"匹配率: {results['overall_metrics']['matching_rate']:.4f}")
+        print(f"總匹配對數: {total_matched_pairs}")
+        print(f"總檢測數: {total_detections}")
+        print(f"總真實標註數: {total_ground_truths}")
+        
+        print("\n=== 各類別結果 ===")
+        for class_id, metrics in class_metrics.items():
+            print(f"類別 {class_id}: P={metrics['precision']:.4f}, R={metrics['recall']:.4f}, F1={metrics['f1_score']:.4f}, IoU={metrics['mean_iou']:.4f}")
+        
+        return results
+
+                
+    def save_evaluation_results(self, results, save_path="evaluation_results.json"):
+        """
+        將評估結果保存到文件
+        
+        Args:
+            results: 評估結果字典
+            save_path: 保存路徑
+        """
+        import json
+        
+        # 確保所有數據都是可序列化的
+        serializable_results = {}
+        for key, value in results.items():
+            if isinstance(value, dict):
+                serializable_results[key] = {k: float(v) if isinstance(v, (np.float32, np.float64)) else v 
+                                        for k, v in value.items()}
+            else:
+                serializable_results[key] = float(value) if isinstance(value, (np.float32, np.float64)) else value
+        
+        with open(save_path, 'w', encoding='utf-8') as f:
+            json.dump(serializable_results, f, indent=2, ensure_ascii=False)
+        
+        print(f"評估結果已保存到: {save_path}")
+
+    def visualize_evaluation_sample(self, dataloader_train, img_normalization, box_coder, cfg, 
+                                image_id=None, class_id=None, iou_threshold=0.5):
+        """
+        可視化單張圖像的評估結果，同時顯示檢測結果和真實標註
+        
+        Args:
+            dataloader_train: 訓練數據加載器
+            img_normalization: 圖像正規化參數
+            box_coder: 邊界框編碼器
+            cfg: 配置參數
+            image_id: 指定圖像ID，如果為None則隨機選擇
+            class_id: 指定類別ID，如果為None則隨機選擇
+            iou_threshold: IoU閾值
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as patches
+        
+        # 選擇圖像和類別
+        if image_id is None:
+            image_id = random.choice(list(map(int, self._get_db().get_image_ids())))
+        
+        if class_id is None:
+            available_classes = list(map(int, self._get_db().get_class_ids_by_image_id(image_id)))
+            class_id = random.choice(available_classes) if available_classes else 1
+        
+        # 生成檢測結果
+        self._prune_net = self._prune_net.cuda()
+        detection_boxes, detection_labels, detection_scores = generate_detection_boxes(
+            dataloader_train, self._prune_net, img_normalization, box_coder, 
+            image_id, class_id, cfg, class_num=10
+        )
+        
+        # 獲取真實標註
+        annotation = dataloader_train.get_image_annotation_for_imageid(image_id)
+        gt_boxes = annotation.bbox_xyxy
+        gt_labels = annotation.get_field('labels')
+        
+        # 過濾相同類別的真實標註
+        gt_mask = (gt_labels == class_id)
+        gt_boxes_filtered = gt_boxes[gt_mask]
+        
+        # 獲取原始圖像
+        original_image = dataloader_train._get_dataset_image_by_id(image_id)
+        
+        # 創建圖像顯示
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 8))
+        
+        # 顯示檢測結果
+        ax1.imshow(original_image)
+        ax1.set_title(f'檢測結果 (圖像ID: {image_id}, 類別: {class_id})')
+        
+        if detection_boxes is not None:
+            for i, box in enumerate(detection_boxes):
+                rect = patches.Rectangle((box[0], box[1]), box[2]-box[0], box[3]-box[1], 
+                                    linewidth=2, edgecolor='red', facecolor='none')
+                ax1.add_patch(rect)
+                
+                # 添加分數標籤
+                if detection_scores is not None:
+                    ax1.text(box[0], box[1]-5, f'{detection_scores[i]:.3f}', 
+                            color='red', fontsize=10, fontweight='bold')
+        
+        # 顯示真實標註
+        ax2.imshow(original_image)
+        ax2.set_title(f'真實標註 (圖像ID: {image_id}, 類別: {class_id})')
+        
+        for box in gt_boxes_filtered:
+            rect = patches.Rectangle((box[0], box[1]), box[2]-box[0], box[3]-box[1], 
+                                linewidth=2, edgecolor='green', facecolor='none')
+            ax2.add_patch(rect)
+        
+        plt.tight_layout()
+        plt.savefig(f'./visual/evaluation_sample_{image_id}_{class_id}.png', dpi=300, bbox_inches='tight')
+        plt.show()
+        
+        # 計算並顯示 IoU 信息
+        if detection_boxes is not None and len(gt_boxes_filtered) > 0:
+            print(f"\nIoU 計算結果:")
+            for i, det_box in enumerate(detection_boxes):
+                for j, gt_box in enumerate(gt_boxes_filtered):
+                    d_point1 = (det_box[0], det_box[1])
+                    d_point2 = (det_box[2], det_box[3])
+                    t_point1 = (gt_box[0], gt_box[1])
+                    t_point2 = (gt_box[2], gt_box[3])
+                    
+                    iou = self._compute_iou(d_point1, d_point2, t_point1, t_point2)
+                    status = "✓" if iou >= iou_threshold else "✗"
+                    print(f"檢測框 {i} vs 真實框 {j}: IoU = {iou:.4f} {status}")
 
 
     def save_checkpoint_with_pruned_net(self, log_path, optimizer, model_name=None, i_iter=None, extra_fields=None):

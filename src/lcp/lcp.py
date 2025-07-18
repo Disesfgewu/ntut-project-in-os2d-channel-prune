@@ -815,6 +815,48 @@ class LCP:
             showfig=True,  # Specify this is detection visualization
         )
 
+        from PIL import Image
+
+        # 讀取圖片
+        img = Image.open("./visualized_images/image_None_.png")
+        
+        # 存成新檔名
+        img.save(f"./visualized_images/{image_id}_{class_id}_detection.png")
+
+        annotation = dataloader_train.get_image_annotation_for_imageid(image_id)
+        img = dataloader_train._get_dataset_image_by_id(image_id)
+        w, h = img.size
+        # print( w , h )
+        
+        # 寫入每個物件的詳細資訊
+        for obj_idx in range(len(annotation)):
+            # 邊界框座標 (x_min, y_min, x_max, y_max)
+            bbox = annotation.bbox_xyxy[obj_idx].tolist()
+            
+            # 物件類別ID
+            class_id = annotation.get_field('labels')[obj_idx].item()
+            # 困難標記 (如果存在) - 保留但不影響資料寫入
+            if annotation.has_field('difficult'):
+                is_difficult = annotation.get_field('difficult')[obj_idx].item()
+                difficult = f", Difficult: {bool(is_difficult)}"
+        
+        class_ids = [class_id]
+        visualize_boxes_on_image(
+            image_id=image_id,
+            boxes_one_image=annotation,
+            dataloader=dataloader_train,
+            cfg=cfg,
+            class_ids=class_ids,
+            showfig=True,
+        )
+
+        # 讀取圖片
+        img = Image.open("./visualized_images/image_None_.png")
+        
+        # 存成新檔名
+        img.save(f"./visualized_images/{image_id}_{class_id}_annotation.png")
+
+
     def save_checkpoint_with_pruned_net(self, log_path, optimizer, model_name=None, i_iter=None, extra_fields=None):
         """
         保存剪枝網路和 optimizer

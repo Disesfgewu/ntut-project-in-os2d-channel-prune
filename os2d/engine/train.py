@@ -476,7 +476,8 @@ def trainval_loop(dataloader_train, net, cfg, criterion, optimizer, dataloaders_
                 dataloader_train.set_hard_negative_data(hardnegdata_per_imageid)
             
             # print iter info
-            logger.info(f"Iter {i_iter} ({cfg.train.optim.max_iter}), epoch {i_epoch}, time {time_since(t_start)}")
+            # logger.info(f"Iter {i_iter} ({cfg.train.optim.max_iter}), epoch {i_epoch}, time {time_since(t_start)}")
+            print(f"Iter {i_iter} ({cfg.train.optim.max_iter}), epoch {i_epoch}, time {time_since(t_start)}")
 
             # get data for training
             t_start_loading = time.time()

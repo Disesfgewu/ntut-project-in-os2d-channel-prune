@@ -37,7 +37,7 @@ def print_meters(meters, logger):
     meters_str = ""
     for k, v in meters.items():
         meters_str += "%s %.4f, "%(k, v)
-    logger.info(meters_str)
+    print(meters_str)
 
 
 def log_meters(log, t_start, i_iter, log_path,

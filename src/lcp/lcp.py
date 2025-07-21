@@ -86,7 +86,7 @@ class LCP:
         for name, ch in layer_names:
             # 初始化時保留所有 channel
             self._keep_dices[name] = list(range(ch))
-        print(f"[LCP] 初始化完成，共 {len(self._keep_dices)} 層的 channel 索引")
+        # print(f"[LCP] 初始化完成，共 {len(self._keep_dices)} 層的 channel 索引")
 
     def set_prune_db(self, prune_db):
         self._prune_db = prune_db
@@ -108,7 +108,7 @@ class LCP:
         try:
             # 1. 確保網路在 GPU 上
             if next(self._net.parameters()).device.type != 'cuda':
-                print(f"[LCP] get_layer_feature: 將 _net 移到 GPU")
+                # print(f"[LCP] get_layer_feature: 將 _net 移到 GPU")
                 self._net = self._net.cuda()
                 self._net_device = 'cuda'
                 torch.cuda.empty_cache()
@@ -126,7 +126,7 @@ class LCP:
             def hook(module, input, output):
                 # 統一策略：保持在 GPU 上進行計算
                 self._features[layer_name] = output
-                print(f"[HOOK] {layer_name} output shape: {output.shape}")
+                # print(f"[HOOK] {layer_name} output shape: {output.shape}")
 
             # 3. 執行前向傳播
             handle = layer.register_forward_hook(hook)
@@ -148,7 +148,7 @@ class LCP:
             
         finally:
             # 5. 計算完成後將網路移回 CPU
-            print(f"[LCP] get_layer_feature: 將 _net 移回 CPU")
+            # print(f"[LCP] get_layer_feature: 將 _net 移回 CPU")
             self._net = self._net.cpu()
             self._net_device = 'cpu'
             torch.cuda.empty_cache()
@@ -160,10 +160,10 @@ class LCP:
         try:
             # 1. 確保剪枝網路在 GPU 上
             if next(self._prune_net.parameters()).device.type != 'cuda':
-                print(f"[LCP] get_prune_layer_feature: 將 _prune_net 移到 GPU")
+                # print(f"[LCP] get_prune_layer_feature: 將 _prune_net 移到 GPU")
                 self._prune_net = self._prune_net.cuda()
                 self._prune_net_device = 'cuda'
-                print(f"[LOG] change prune net to CUDA1")
+                # print(f"[LOG] change prune net to CUDA1")
                 torch.cuda.empty_cache()
             
             # 2. 取得目標層
@@ -179,7 +179,7 @@ class LCP:
             def hook(module, input, output):
                 # 統一策略：保持在 GPU 上進行計算
                 self._prune_features[layer_name] = output
-                print(f"[HOOK] {layer_name} output shape: {output.shape}")
+                # print(f"[HOOK] {layer_name} output shape: {output.shape}")
 
             # 3. 執行前向傳播
             handle = layer.register_forward_hook(hook)
@@ -201,10 +201,10 @@ class LCP:
             
         finally:
             # 5. 計算完成後將剪枝網路移回 CPU
-            # print(f"[LCP] get_prune_layer_feature: 將 _prune_net 移回 CPU")
+            # # print(f"[LCP] get_prune_layer_feature: 將 _prune_net 移回 CPU")
             # self._prune_net = self._prune_net.cpu()
             # self._prune_net_device = 'cpu'
-            # print(f"[LOG] change prune net to CPU1")
+            # # print(f"[LOG] change prune net to CPU1")
             torch.cuda.empty_cache()
 
     def get_image_tensor_from_dataloader(self, image_id, resize_target=1500, is_cuda=False):
@@ -229,11 +229,11 @@ class LCP:
             
             # 4. 智能設備管理：根據計算需求決定設備位置
             img_tensor = img_tensor.cuda()
-            # print(f"[LCP] Image tensor moved to GPU - shape: {img_tensor.shape}")
+            # # print(f"[LCP] Image tensor moved to GPU - shape: {img_tensor.shape}")
             return img_tensor
             
         except Exception as e:
-            print(f"[ERROR] Failed to process image {image_id}: {e}")
+            # print(f"[ERROR] Failed to process image {image_id}: {e}")
             raise e
 
     def get_layers_name(self):
@@ -279,7 +279,7 @@ class LCP:
     #             raise ValueError(f"Feature map shape mismatch: {feature_map_orig.shape} vs {feature_map_pruned.shape}")
     #         Q = feature_map_orig.numel()
     #         loss = 0.5 / Q * torch.norm(feature_map_orig - feature_map_pruned, p=2) ** 2
-    #         print( f"[LOG] Image ID: {image_id}, Layer: {layer_name}, Loss: {loss.item()}, Q: {Q}, torch.norm(feature_map_orig - feature_map_pruned, p=2) = {torch.norm(feature_map_orig - feature_map_pruned, p=2)}")
+    #         # print( f"[LOG] Image ID: {image_id}, Layer: {layer_name}, Loss: {loss.item()}, Q: {Q}, torch.norm(feature_map_orig - feature_map_pruned, p=2) = {torch.norm(feature_map_orig - feature_map_pruned, p=2)}")
     #         losses.append(loss.item())
     #     return float(np.mean(losses))
 
@@ -317,7 +317,7 @@ class LCP:
                 Q = feature_map_orig.numel()
                 loss = 0.5 / Q * torch.norm(feature_map_orig - feature_map_pruned, p=2) ** 2
                 
-                print(f"[LOG] Image ID: {image_id}, Layer: {layer_name}, Loss: {loss.item()}, Q: {Q}")
+                # print(f"[LOG] Image ID: {image_id}, Layer: {layer_name}, Loss: {loss.item()}, Q: {Q}")
                 
                 # 保持 tensor 格式在 GPU 上，不立即移出
                 losses.append(loss)
@@ -328,13 +328,13 @@ class LCP:
             
             # 在 CPU 上計算最終結果
             final_loss = torch.stack(losses).mean().cpu()
-            print(f"[LOG] 所有計算完成，最終 loss: {final_loss.item()}")
+            # print(f"[LOG] 所有計算完成，最終 loss: {final_loss.item()}")
             
             return final_loss
             
         finally:
             # 計算完成後將網路移回 CPU
-            print(f"[LCP] compute_reconstruction_loss: 計算完成，將網路移回 CPU")
+            # print(f"[LCP] compute_reconstruction_loss: 計算完成，將網路移回 CPU")
             torch.cuda.empty_cache()
 
     def compute_joint_loss(self, layer_name, lambda_rate=1.0, use_image_num=None, random_seed=None):
@@ -388,10 +388,10 @@ class LCP:
       
       # 1. 確保 _prune_net 在 GPU 上進行梯度計算
       if next(self._prune_net.parameters()).device.type != 'cuda':
-          print(f"[LCP] compute_channel_importance: 將 _prune_net 移到 GPU")
+          # print(f"[LCP] compute_channel_importance: 將 _prune_net 移到 GPU")
           self._prune_net = self._prune_net.cuda()
           self._prune_net_device = 'cuda'
-          print(f"[LOG] change prune net to CUDA2")
+          # print(f"[LOG] change prune net to CUDA2")
       
       # 2. 取得目標層
       layer = self._prune_net
@@ -414,12 +414,12 @@ class LCP:
       if not joint_loss.is_cuda:
           joint_loss = joint_loss.cuda()
       
-      print(f"[LOG] Computing channel importance for {layer_name}")
-      print(f"[ LOG] Joint loss: {joint_loss:.6f}")
+      # print(f"[LOG] Computing channel importance for {layer_name}")
+      # print(f"[ LOG] Joint loss: {joint_loss:.6f}")
       
       # 5. GPU 上的梯度計算（現在設備一致）
-      print( f"[LOG] device for prune net : {self._prune_net_device}")
-      print( f"[LOG] device for net : {self._net_device}")
+      # print( f"[LOG] device for prune net : {self._prune_net_device}")
+      # print( f"[LOG] device for net : {self._net_device}")
       
       self._prune_net.zero_grad()
       joint_loss.backward()
@@ -430,11 +430,11 @@ class LCP:
       
       importance = grad.pow(2).sum(dim=(1, 2, 3)).detach().cpu().numpy()
       
-      print(f"[LOG] Channel importance 計算完成")
-      print(f"[LCP] compute_channel_importance: 將 _prune_net 移回 CPU")
+      # print(f"[LOG] Channel importance 計算完成")
+      # print(f"[LCP] compute_channel_importance: 將 _prune_net 移回 CPU")
       self._prune_net = self._prune_net.cpu()
       self._prune_net_device = 'cpu'
-      print(f"[LOG] change prune net to CPU3")
+      # print(f"[LOG] change prune net to CPU3")
       torch.cuda.empty_cache()
       return importance
          
@@ -465,13 +465,13 @@ class LCP:
                 elif attr.isdigit():
                     layer = layer[int(attr)]
                 else:
-                    print(f"[ERROR] 無法找到屬性: {attr} in {layer_path}")
+                    # print(f"[ERROR] 無法找到屬性: {attr} in {layer_path}")
                     return None
             
             return layer
             
         except Exception as e:
-            print(f"[ERROR] 獲取層 {layer_name} 失敗: {e}")
+            # print(f"[ERROR] 獲取層 {layer_name} 失敗: {e}")
             return None
 
     def compute_channel_importance_no_grad(self, layer_name, lambda_rate=1.0, use_image_num=None, random_seed=None):
@@ -479,7 +479,7 @@ class LCP:
         基於數學推導的無梯度通道重要性計算
         實現統合公式：S_k = w1×L1 + w2×Var + w3×MeanDev + w4×Energy + w5×Sparsity
         """
-        print(f"[LCP] 開始基於數學推導的無梯度通道重要性計算 - {layer_name}")
+        # print(f"[LCP] 開始基於數學推導的無梯度通道重要性計算 - {layer_name}")
         
         self._net = self._net.cuda()
         self._prune_net = self._prune_net.cuda()
@@ -516,7 +516,7 @@ class LCP:
             all_feature_stats, all_reconstruction_errors, all_auxiliary_losses, lambda_rate
         )
         
-        print(f"[LCP] 基於數學推導的無梯度計算完成")
+        # print(f"[LCP] 基於數學推導的無梯度計算完成")
         return importance_scores
 
     def _extract_layer_features_no_grad(self, network, img_tensor, layer_name):
@@ -534,7 +534,7 @@ class LCP:
             elif attr.isdigit():
                 target_layer = target_layer[int(attr)]
             else:
-                print(f"[ERROR] 無法找到層: {attr} in {layer_name}")
+                # print(f"[ERROR] 無法找到層: {attr} in {layer_name}")
                 return None
         
         def hook(module, input, output):
@@ -599,7 +599,7 @@ class LCP:
             return total_aux_loss / max(count, 1)
             
         except Exception as e:
-            print(f"[WARNING] 輔助損失近似計算失敗: {e}")
+            # print(f"[WARNING] 輔助損失近似計算失敗: {e}")
             return 0.0
 
     def _approximate_reconstruction_error_with_theory(self, image_id, layer_name):
@@ -621,14 +621,14 @@ class LCP:
             
             # 計算重建誤差（MSE）
             if orig_features.shape != pruned_features.shape:
-                print(f"[WARNING] 特徵維度不匹配: {orig_features.shape} vs {pruned_features.shape}")
+                # print(f"[WARNING] 特徵維度不匹配: {orig_features.shape} vs {pruned_features.shape}")
                 return 0.0
             
             mse = torch.mean((orig_features - pruned_features) ** 2)
             return mse.item()
             
         except Exception as e:
-            print(f"[WARNING] 重建誤差計算失敗: {e}")
+            # print(f"[WARNING] 重建誤差計算失敗: {e}")
             return 0.0
 
 
@@ -640,9 +640,9 @@ class LCP:
             
             with torch.no_grad():
                 orig_features = self._extract_layer_features_no_grad(self._net, img_tensor, layer_name)
-                print( "[LOG] 原始網路特徵提取完成")
+                # print( "[LOG] 原始網路特徵提取完成")
                 pruned_features = self._extract_layer_features_no_grad(self._prune_net, img_tensor, layer_name)
-                print( "[LOG] 剪枝網路特徵提取完成")
+                # print( "[LOG] 剪枝網路特徵提取完成")
             if orig_features is None:
                 return None
             
@@ -650,7 +650,7 @@ class LCP:
             return self._compute_mathematical_feature_statistics(orig_features, pruned_features)
             
         except Exception as e:
-            print(f"[WARNING] 理論統計計算失敗: {e}")
+            # print(f"[WARNING] 理論統計計算失敗: {e}")
             return None
 
     def _compute_mathematical_feature_statistics(self, orig_features, pruned_features):

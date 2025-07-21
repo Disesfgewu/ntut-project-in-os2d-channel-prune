@@ -35,7 +35,7 @@ def evaluate(dataloader, net, cfg, criterion=None, print_per_class_results=False
     logger = logging.getLogger("OS2D.evaluate")
     dataset_name = dataloader.get_name()
     dataset_scale = dataloader.get_eval_scale()
-    logger.info("Starting to eval on {0}, scale {1}".format(dataset_name, dataset_scale))
+    print("Starting to eval on {0}, scale {1}".format(dataset_name, dataset_scale))
     t_start_eval = time.time()
     net.eval()
 

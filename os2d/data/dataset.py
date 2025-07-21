@@ -708,7 +708,7 @@ class DatasetOneShotDetection(data.Dataset):
         # get data for this image
         image_data = self.gtboxframe[self.gtboxframe["imageid"] == image_id]
         img_size = self.image_size_per_image_id[image_id]
-        print( f"Image {image_id} size {img_size} has {len(image_data)} boxes")
+        # print( f"Image {image_id} size {img_size} has {len(image_data)} boxes")
         boxes = self.get_boxes_from_image_dataframe(image_data, img_size)
         return boxes
 

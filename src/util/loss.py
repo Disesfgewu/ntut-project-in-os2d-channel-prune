@@ -127,8 +127,8 @@ class LCPFinetuneCriterion(nn.Module):
         original_is_valid = original_loss.item() > VALIDITY_THRESHOLD
         auxiliary_is_valid = auxiliary_loss.item() > VALIDITY_THRESHOLD
         
-        print(f"[LCP Loss] Original loss: {original_loss:.6f} (valid: {original_is_valid})")
-        print(f"[LCP Loss] Auxiliary loss: {auxiliary_loss:.6f} (valid: {auxiliary_is_valid})")
+        # print(f"[LCP Loss] Original loss: {original_loss:.6f} (valid: {original_is_valid})")
+        # print(f"[LCP Loss] Auxiliary loss: {auxiliary_loss:.6f} (valid: {auxiliary_is_valid})")
         
         # 只有當兩個損失都有效時才進行組合
         if original_is_valid and auxiliary_is_valid:
@@ -283,14 +283,14 @@ class LCPFinetuneCriterion(nn.Module):
               torch.cuda.synchronize()
           gc.collect()
       
-      print(f"[LCP Debug] Computing auxiliary loss...")
-      print(f"[LCP Debug] batch_idx is None: {batch_idx is None}")
-      print(f"[LCP Debug] aux_net is None: {self.aux_net is None}")
+    #   print(f"[LCP Debug] Computing auxiliary loss...")
+    #   print(f"[LCP Debug] batch_idx is None: {batch_idx is None}")
+    #   print(f"[LCP Debug] aux_net is None: {self.aux_net is None}")
       
       log_memory("函數開始")
 
       if batch_idx is None or self.aux_net is None:
-          print(f"[LCP Debug] Returning zero auxiliary loss")
+        #   print(f"[LCP Debug] Returning zero auxiliary loss")
           return torch.tensor(0.0, requires_grad=True)
       
       device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -311,16 +311,16 @@ class LCPFinetuneCriterion(nn.Module):
           log_memory("批次資料解包後")
 
           # 調試資訊
-          print(f"[LCP Debug] class_ids type: {type(class_ids)}")
-          print(f"[LCP Debug] class_ids length: {len(class_ids) if hasattr(class_ids, '__len__') else 'No length'}")
-          if len(class_ids) > 0:
-              print(f"[LCP Debug] class_ids[0] type: {type(class_ids[0])}")
+        #   print(f"[LCP Debug] class_ids type: {type(class_ids)}")
+        #   print(f"[LCP Debug] class_ids length: {len(class_ids) if hasattr(class_ids, '__len__') else 'No length'}")
+        #   if len(class_ids) > 0:
+        #       print(f"[LCP Debug] class_ids[0] type: {type(class_ids[0])}")
 
           # 🔴 階段3: 極致樣本數量限制
           db = self.get_database()
           
-          # 更嚴格的限制：最多 8 個樣本
-          MAX_SAMPLES = min( 8 , len(image_ids) )
+          # 更嚴格的限制：最多 25 個樣本
+          MAX_SAMPLES = min(25, len(image_ids))
           samples_collected = 0
           total_aux_loss = torch.tensor(0.0, device=device, requires_grad=True)
           
@@ -332,7 +332,7 @@ class LCPFinetuneCriterion(nn.Module):
               # 每處理5個 image_id 就清理一次記憶體
               if i % 5 == 0:
                   force_cleanup()
-                  log_memory(f"處理 image_id {i}")
+                #   log_memory(f"處理 image_id {i}")
               
               # 處理 class_ids 的不同結構
               if isinstance(class_ids[i], (list, tuple, np.ndarray)):
@@ -383,13 +383,13 @@ class LCPFinetuneCriterion(nn.Module):
                                   total_aux_loss = total_aux_loss + sample_aux_loss.detach()
                                   samples_collected += 1
                                   
-                                  print(f"[LCP Debug] Sample {samples_collected}: aux_loss = {sample_aux_loss.item():.6f}")
+                                #   print(f"[LCP Debug] Sample {samples_collected}: aux_loss = {sample_aux_loss.item():.6f}")
                                   
                                   # 立即刪除樣本損失
                                   del sample_aux_loss
                               
                           except (ValueError, TypeError) as e:
-                              print(f"[LCP Debug] Error processing sample: {e}")
+                            #   print(f"[LCP Debug] Error processing sample: {e}")
                               continue
                       
                       # 🔴 立即清理資料庫查詢結果

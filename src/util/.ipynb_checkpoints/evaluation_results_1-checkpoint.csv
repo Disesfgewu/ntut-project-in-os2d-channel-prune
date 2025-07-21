@@ -1,2 +1,2 @@
 iteration,timestamp,model_type,evaluated_images,iou_threshold,precision,recall,f1_score,mean_iou,map,matching_rate,total_detections,total_ground_truths,total_matched_pairs,unmatched_detections,unmatched_gts,num_classes,classes_perfect_score,classes_zero_score
-before_prune_iter_in_0,2025-07-18 20:51:50,pruned_network,500,0.5,0.7648221343873518,0.7648221343873518,0.7648221343873517,0.6121577653933605,0.7089915847097973,1.0,1518,1518,1518,0,0,345,176,31
+before_prune_iter_in_0,2025-07-19 08:56:01,pruned_network,500,0.5,0.7612863327149041,0.7612863327149041,0.7612863327149041,0.6148706921336683,0.7033018204593418,1.0,1617,1617,1617,0,0,330,159,31

@@ -51,8 +51,8 @@ def covert_point_back_by_ratio(boxes, w, h):
 class LCP:
     def __init__(self, net, aux_net=None, dataloader=None, img_normalization=None):
         # 預設所有模型都在 CPU 上（按需 GPU 策略）
-        self._net = net.cpu()  # 原始網路
-        self._prune_net = copy.deepcopy(net).cpu()  # 剪枝網路也在 CPU
+        self._net = net.cuda()  # 原始網路
+        self._prune_net = copy.deepcopy(net).cuda()  # 剪枝網路也在 CPU
         self._aux_net = aux_net
         self._dataloader = dataloader
         
@@ -60,8 +60,8 @@ class LCP:
         self._features = {}
         self._prune_features = {}
         self._keep_dices = {}
-        self._prune_net_device = 'cpu'
-        self._net_device = 'cpu'
+        self._prune_net_device = 'cuda'
+        self._net_device = 'cuda'
         self._pruner = Pruner(self._prune_net)
         self._prune_db = None
         # 圖像標準化參數
@@ -149,8 +149,8 @@ class LCP:
         finally:
             # 5. 計算完成後將網路移回 CPU
             # print(f"[LCP] get_layer_feature: 將 _net 移回 CPU")
-            self._net = self._net.cpu()
-            self._net_device = 'cpu'
+            self._net = self._net.cuda()
+            self._net_device = 'cuda'
             torch.cuda.empty_cache()
 
     def get_prune_layer_feature(self, image_tensor, layer_name='net_feature_maps'):
@@ -202,8 +202,8 @@ class LCP:
         finally:
             # 5. 計算完成後將剪枝網路移回 CPU
             # # print(f"[LCP] get_prune_layer_feature: 將 _prune_net 移回 CPU")
-            # self._prune_net = self._prune_net.cpu()
-            # self._prune_net_device = 'cpu'
+            # self._prune_net = self._prune_net.cuda()
+            # self._prune_net_device = 'cuda'
             # # print(f"[LOG] change prune net to CPU1")
             torch.cuda.empty_cache()
 
@@ -327,7 +327,7 @@ class LCP:
                 torch.cuda.empty_cache()
             
             # 在 CPU 上計算最終結果
-            final_loss = torch.stack(losses).mean().cpu()
+            final_loss = torch.stack(losses).mean().cuda()
             # print(f"[LOG] 所有計算完成，最終 loss: {final_loss.item()}")
             
             return final_loss
@@ -428,12 +428,12 @@ class LCP:
       if grad is None:
           raise ValueError(f"No gradient computed for layer {layer_name}")
       
-      importance = grad.pow(2).sum(dim=(1, 2, 3)).detach().cpu().numpy()
+      importance = grad.pow(2).sum(dim=(1, 2, 3)).detach().cuda().numpy()
       
       # print(f"[LOG] Channel importance 計算完成")
       # print(f"[LCP] compute_channel_importance: 將 _prune_net 移回 CPU")
-      self._prune_net = self._prune_net.cpu()
-      self._prune_net_device = 'cpu'
+      self._prune_net = self._prune_net.cuda()
+      self._prune_net_device = 'cuda'
       # print(f"[LOG] change prune net to CPU3")
       torch.cuda.empty_cache()
       return importance
@@ -538,7 +538,7 @@ class LCP:
                 return None
         
         def hook(module, input, output):
-            features[layer_name] = output.detach().cpu()
+            features[layer_name] = output.detach().cuda()
         
         # 註冊 hook
         handle = target_layer.register_forward_hook(hook)

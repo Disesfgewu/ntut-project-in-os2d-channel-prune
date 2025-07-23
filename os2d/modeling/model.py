@@ -345,11 +345,11 @@ class Os2dModel(nn.Module):
                 # 載入恢復後的網路狀態
                 if restored_state_dict:
                     self.load_state_dict(restored_state_dict, strict=False)
-                    self.logger.info("Successfully loaded restored pruned network state")
+                    print("Successfully loaded restored pruned network state")
                 else:
-                    self.logger.info("No network state found in checkpoint")
+                    print("No network state found in checkpoint")
             except Exception as e:
-                self.logger.info(f"Failed to load the full model, trying to init feature extractors {e}")
+                print(f"Failed to load the full model, trying to init feature extractors {e}")
                 self._load_network(self.net_label_features.net_class_features, path=path)
                 if not self.merge_branch_parameters:
                     self._load_network(self.net_feature_maps, model_data=self.net_label_features.net_class_features.state_dict())

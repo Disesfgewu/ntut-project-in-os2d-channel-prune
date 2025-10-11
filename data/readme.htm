@@ -1,0 +1,679 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+	<meta http-equiv="expires" content="86400">
+	<meta name="keywords" content="INSTRE, instance, dataset, benchmark, object retrieval, object recognition, computer vision" />
+	<meta name="description" content="this is a benchmark for INSTance-level visual object REtrieval and REcognition (INSTRE)." />
+	<title>INSTRE Dataset</title>
+    
+	<link rel="stylesheet" href="css/easymod.css" media="screen" />
+	<link rel="stylesheet" href="css/easyprint.css" media="print" />
+	
+	<style type="text/css">
+	/* 
+*
+* Easy front-end framework
+*
+* Copyright (c) 2009 Alen Grakalic
+* http://easyframework.com/license.php
+*
+* supported by Templatica (http://templatica.com)
+* and Css Globe (http://cssglobe.com)
+*
+*/
+
+/* HTML elements  */		
+
+	h1, h2, h3, h4, h5, h6{
+		font-weight:normal;
+		margin:0;
+		line-height:1em;
+		}	
+	h1{font-size:2em;margin-bottom:.5em;}	
+	h2{font-size:1.75em;margin-bottom:.5142em;padding-top:.2em;}	
+	h3{font-size:1.5em;margin-bottom:.7em;padding-top:.3em;}
+	h4{font-size:1.25em;margin-bottom:.6em;}
+	h5,h6{font-size:1em;margin-bottom:.5em;font-weight:bold;}
+			
+	p, blockquote, ul, ol, dl, form, table{line-height:inherit;margin:0 0 1.5em 0;}
+	ul, ol, dl{padding:0;}
+	ul ul, ul ol, ol ol, ol ul, dd{margin:0;}
+	li{margin:0;display:list-item;list-style-position:inside;}	
+	blockquote, dd, li{padding:0 0 0 2em;}
+	pre, code, samp, kbd, var{font:100% mono-space,monospace;}
+	pre{overflow:auto;}
+	abbr, acronym{
+		text-transform:uppercase;
+		border:none;
+		letter-spacing:1px;
+		}
+	small{font-size:90%;}
+	sup, sub{font-size:85%;}
+	em, cite, q{font-style:italic;}
+	img{border:none;}			
+	table{width:100%;border-collapse:collapse;}
+	th,caption{text-align:left;}
+	form{display:none;}
+
+/* //  HTML elements */	
+
+/* common */		
+	
+	.left{float:left;margin-right:1em;}
+	.right{float:right;margin-left:1em;}
+	.center{text-align:center;}
+	
+	.clear{clear:both;}
+	.first{margin-left:0 !important;}
+	.last{margin-right:0 !important;}
+	.top{margin-top:0 !important;}
+	.bottom{margin-bottom:0 !important;}	
+	.hidden, .graphic{display:none;}
+
+/* // common */			
+
+/* base */
+	
+	body, table, input, textarea, select, li, button{
+		font:100% Helvetica, Arial, Sans-Serif;
+		line-height:180%;
+		color:#000;
+		}		
+	body{
+		font-size:13px;
+		background:#fff;
+		margin:0;
+		padding:0;
+		}	
+	a{
+		text-decoration:none;
+		color:#555;
+		}
+	ins{text-decoration:none;color:#900;font-style:italic;}
+	code{color:#555;}
+	pre{
+		margin-left:2em;
+		padding-left:2em;
+		border-left:1px solid #ccc;
+		}
+	blockquote{
+		margin-left:2em;
+		border-left:1px solid #ccc;
+		font-style:italic;
+		}	
+	dt{font-weight:bold;}
+	th, td{padding:8px;}		
+	th{background:#eee;}
+	td{border-bottom:1px solid #eee;}
+	caption{font-style:italic;color:#777;margin:.5em 0;}	
+
+	.excerpt{font-size:120%;font-style:italic;}
+	.note{font-weight:bold;}
+	
+/* base */
+
+/* misc */
+
+	#container{}
+	.inner{}
+	#header{
+		margin-bottom:1em;
+		border-bottom:1px solid #ccc;
+		padding-bottom:1em;
+		}	
+	.content{}
+	.main, .secondary, .tertiary, .quaternary{}
+	.main{}
+	.secondary{}
+	.tertiary{}
+	.quaternary{}
+	#footer{
+		margin-top:1em;
+		border-top:1px solid #ccc;
+		padding-top:1em;
+		position:relative;
+		clear:both;
+		}
+	
+	#nav, .nav{display:none;}	
+	
+	#header h1{
+		line-height:50px;
+		height:50px;
+		margin:0;
+		}
+	#header h1 a{		
+		}		
+
+/* // misc */
+	
+/* clearfix */
+
+	.inner:after, .content:after, .cols:after, .fixed:after{
+		content:"."; 
+		display:block; 
+		height:0; 
+		clear:both; 
+		visibility:hidden;
+		}
+	.inner, .content, .cols, .fixed{display:block;min-height:1%;}
+	* html .inner, * html .content, * html .cols, * html .fixed{height:1%;}
+
+/* // clearfix */
+	/* 
+*
+* Easy front-end framework
+*
+* Copyright (c) 2009 Alen Grakalic
+* http://easyframework.com/license.php
+*
+* supported by Templatica (http://templatica.com)
+* and Css Globe (http://cssglobe.com)
+*
+*/
+
+
+/*
+
+for more info about the strucure of this file 
+please read http://easyframework.com/documentation.php
+
+*/
+
+/* HTML elements  */
+
+	h1, h2, h3, h4, h5, h6{
+		font-weight:normal;
+		margin:0;
+		line-height:1em;
+		}
+	/*h1{font-size:2em;margin-bottom:.5em;}
+	h2{font-size:1.75em;margin-bottom:.5142em;padding-top:.2em;}
+	h3{font-size:1.5em;margin-bottom:.7em;padding-top:.3em;}
+	h4{font-size:1.25em;margin-bottom:.6em;}
+	h5,h6{font-size:1em;margin-bottom:.5em;font-weight:bold;}*/
+   
+	h1{font-size:1.75em;margin-bottom:.5142em;padding-top:.2em;}
+	h2{font-size:1.5em;margin-bottom:.7em;padding-top:.3em;}
+	h3{font-size:1.25em;margin-bottom:.6em;}
+	h4, h5,h6{font-size:1em;margin-bottom:.5em;font-weight:bold;}
+    
+    /*h1{font-size:1.5em;margin-bottom:.7em;padding-top:.3em;}
+	h2{font-size:1.25em;margin-bottom:.6em;}
+	h3, h4, h5,h6{font-size:1em;margin-bottom:.5em;font-weight:bold;}*/
+    
+	p, blockquote, ul, ol, dl, form, table, pre{line-height:inherit;margin:0 0 1.5em 0;}
+	ul, ol, dl{padding:0;}
+	ul ul, ul ol, ol ol, ol ul, dd{margin:0;}
+	li{margin:0 0 0 2em;padding:0;display:list-item;list-style-position:outside;}	
+	blockquote, dd{padding:0 0 0 2em;}
+	pre, code, samp, kbd, var{font:100% mono-space,monospace;}
+	pre{overflow:auto;}
+	abbr, acronym{
+		text-transform:uppercase;
+		border-bottom:1px dotted #000;
+		letter-spacing:1px;
+		}
+	abbr[title], acronym[title]{cursor:help;}
+	small{font-size:.9em;}
+	sup, sub{font-size:.8em;}
+	em, cite, q{font-style:italic;}
+	img{border:none;}			
+	hr{display:none;}	
+	table{width:100%;border-collapse:collapse;}
+	th,caption{text-align:left;}
+	form div{margin:.5em 0;clear:both;}
+	label{display:block;}
+	fieldset{margin:0;padding:0;border:none;}
+	legend{font-weight:bold;}
+	input[type="radio"],input[type="checkbox"], .radio, .checkbox{margin:0 .25em 0 0;}
+
+/* //  HTML elements */	
+
+/* common */		
+	
+	.left{float:left;margin-right:1em;}
+	.right{float:right;margin-left:1em;}
+	.center{text-align:center;}
+	
+	.clear{clear:both;}
+	.first{margin-left:0 !important;}
+	.last{margin-right:0 !important;}
+	.top{margin-top:0 !important;}
+	.bottom{margin-bottom:0 !important;}	
+	.hidden, .print{display:none;}
+	.graphic{
+		margin:0;
+		padding:0;
+		display:block;
+		overflow:hidden;
+		text-indent:-8000px;
+		}
+
+/* // common */			
+
+/* base */
+	
+	body, table, input, textarea, select, li, button{
+		font:1em Helvetica, Arial, Sans-Serif;
+		line-height:1.5em;
+		color:#333;
+		}		
+	body{
+		font-size:13px;
+		background:#fff;
+		margin:0;
+		padding:0;
+		text-align:center;
+		}	
+	a, a:visited{
+		text-decoration:none;
+		color:#06C;
+		}
+	a:hover{color:#999;}
+	ins{text-decoration:none;color:#900;font-style:italic;}
+	code{color:#555;}
+	pre{
+		margin-left:2em;
+		padding-left:2em;
+		border-left:1px solid #ccc;
+		}
+	blockquote{
+		margin-left:2em;
+		border-left:1px solid #ccc;
+		font-style:italic;
+		}	
+	dt{font-weight:bold;}
+	th, td{padding:.5em 1em;line-height:1.5em;}		
+	th{background:#eee;}
+	td{border-bottom:1px solid #eee;}
+	caption{font-style:italic;color:#777;margin:.5em 0;}	
+	fieldset{
+		border:1px solid #ccc;
+		padding:1em 2em;
+		margin:0 0 1.5em 0;
+		}
+	legend{padding:2px 5px;}	
+	form div.col{clear:none;}form div.first{clear:both;}
+	form div{overflow:hidden;}
+	
+	input[type="text"], input[type="password"], textarea, .field, .area, select{
+		border:1px solid #aaa;
+		padding:5px;
+		background:#fff;
+		width:300px;
+		line-height:1em;
+		margin:0;
+		}
+	select{width:312px;}
+	textarea, .area{overflow:auto; height:150px; width:400px;}
+	input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus, .focus{background:#f5f5f5;outline:none;}
+	.submit{}
+	button{
+		border:none;
+		background:#555;
+		color:#fff;
+		padding:0 2.5em;
+		height:2em;
+		line-height:2em;
+		cursor:pointer;
+		}
+		
+	.note, .success, .error{display:block;}
+	.error{color:#900;}
+	.success{color:#060;}
+	.note{font-weight:bold;}
+	.notvalid{border:1px solid #900 !important;}
+	
+	.pullquote{
+		width:20%;
+		float:left;
+		margin-right:2em;
+		padding-right:2em;
+		border-right:1px solid #ccc;
+		text-align:right;
+		font-size:1.1em;
+		font-style:italic;
+		color:#777;
+		margin-bottom:.5em;
+		}
+	.boxout{
+		width:20%;
+		float:right;
+		margin-left:2em;
+		padding:1em 2em;
+		border:1px solid #ccc;
+		margin-bottom:.5em;
+		}
+	#easy_tooltip{
+		border:1px solid #e1e1e1;
+		padding:2px 10px;
+		background:#f5f5f5;
+		}
+
+/* base */
+
+/* layout */
+
+	#container{	
+		margin:0 auto;
+		width:800px;
+		text-align:left;
+		position:relative;
+		}
+	.inner{
+		position:relative;
+		}
+	#header{
+		position:relative;
+		}	
+	#footer{
+		position:relative;
+		clear:both;
+		}	
+		
+	.content{
+		clear:both;
+		padding:1em 0;
+		}
+	.main, .secondary, .tertiary, .quaternary{
+		float:left;
+		display:inline;
+		}
+	.main{width:800px;}
+	.secondary{width:280px;margin-left:40px;}
+	.tertiary{}
+	.quaternary{}
+	
+	/* grid */
+		
+		.cols{} /* main column container class */
+		.col{
+			float:left;
+			display:inline;
+			width:48%;margin-left:4%; /* 2 equal width columns layout - default */
+			}	
+		.cols3 .col{width:30%;margin-left:5%;} /* 3 equal width columns layout */
+		.cols4 .col{width:22%;margin-left:4%;} /* 4 equal width columns layout */
+		
+		/* use following classes to build custom grid (add as many as you want) */
+		
+		.col1, .col2, .col3{float:left;display:inline;}
+		.col1{}
+		.col2{}
+		.col3{}
+		
+		.indent1{}
+		.indent2{}
+		.indent3{}
+		
+	/* grid */	
+
+/* // layout */
+
+/* navigation */
+	
+		#nav, #nav ul, #nav li{
+			margin:0;
+			padding:0;
+			list-style:none;
+			}	
+		#nav li{
+			float:left;
+			display:inline;
+			position:relative;
+			line-height:32px;
+			height:32px;
+			margin-right:2em;
+			}	
+			
+		#nav ul{
+			position:absolute;
+			left:0;
+			top:32px;
+			padding:5px 10px;
+			width:200px;	
+			background:#fff;
+			display:none;
+			z-index:1000;
+			}
+		#nav ul li{
+			float:none;
+			display:block;
+			}
+		
+/* //navigation */
+
+/* header */
+
+	#header h1{
+		line-height:50px;
+		height:50px;
+		margin:0;
+		}
+	#header h1 a{		
+		}		
+
+/* // header */
+	
+/* content */
+
+	.content a, .content a:visited{
+		text-decoration:underline;
+		}
+	
+/* // content */
+
+/* footer */
+	
+	#footer a, #footer a:visited{
+		text-decoration:underline;
+		}
+	
+/* // footer */
+
+/* clearfix */
+
+	.inner:after, .content:after, .cols:after, .fixed:after{
+		content:"."; 
+		display:block; 
+		height:0; 
+		clear:both; 
+		visibility:hidden;
+		}
+	.inner, .content, .cols, .fixed{display:block;min-height:1%;}
+	* html .inner, * html .content, * html .cols, * html .fixed{height:1%;}
+
+/* // clearfix */
+		.left	{ width: 100%; text-align: left; }
+		.justify { width: 100%; text-align: justify; }
+	</style>
+</head>
+<body>
+
+
+<table align="center" bgcolor="#ffffff" border="0" cellpadding="0" cellspacing="0" width="800">
+      <tbody>
+	  <tr valign="middle">
+        <td width="100%">
+		<center>
+		<h1 style="font-size:2em;padding-top:1em;">INSTRE: for INSTance-level object REtrieval and REcognition</h1>
+		<h4>
+			<a>Shuang Wang</a>&nbsp;&nbsp;&nbsp;&nbsp;
+			<a href="http://www.jdl.ac.cn/user/sqjiang/index_En.htm" target="_blank">Shuqiang Jiang</a>
+		</h4>
+		<p>Institute of Computing Technology, CAS</p>
+	</center>
+	</td></tr>
+	
+	<tr>
+	
+	</tr>
+	
+	</tbody></table>
+
+
+
+<div id="container">
+
+
+<div class="content">
+
+		<div class="main">
+						
+			<div class="cols">
+				<div class="col first" id="dataset">
+					<h2>Description</h2>
+					<p class="justify">
+					Besides instance-level object retrieval and recognition, INSTRE serves many other computer vision algorithms, such as
+detection, invariant features and feature matching. The whole dataset is split into three disjoint subsets <strong>INSTRE-S1</strong> (for single object case 1), 
+					<strong>INSTRE-S2</strong> (for single object case 2) and <strong>INSTRE-M</strong> (for multiple object case). 
+					INSTRE-S1 and INSTRE-S2 are collected for measuring single object case, both of which have 100 object classes. INSTRE-S1 contains 11011
+images and INSTRE-S2 contains 12059 images. We group all the
+100 objects from INSTRE-S1 into 50 two-tuples. INSTRE-M contains 5473 images distributed into such 50 two-tuple
+classes. Note that INSTRE-S1 and INSTRE-S2 allow multiple appearances of the same object in one
+image while each image in INSTRE-M strictly displays two different objects. Objects are roughly categorized into three basic classes: architectures (buildings and sculptures), planar
+objects (designs, paintings and planar surface) and daily stereoscopic objects (toys and irregularly-shaped products).
+					
+					<br/>
+					</p>
+				</div>
+
+				<div class="col">
+					<h2>Data Process</h2>
+					<p>
+						Duplicates, low resolution and blurs are removed. Only color
+images of 200×200 or larger are kept. All images are in JPEG format and have
+been resized with a maximum value of height and width equal to 1000 pixels, preserving aspect ratio.
+					</p>
+					<h2>Merits</h2>
+					<p>
+						 INSTRE has the following major properties: (1) balanced data scale (over 100 images for each class), 
+						(2) more diverse variations for each object, (3) cluttered and natural backgrounds, which are less correlated with the objects,
+						(4) object localization annotation through bounding boxes for each image (5) containing well-manipulated images
+for measuring multiple object (within one image) case.
+					</p>
+				</div>
+				</div>
+
+				<h2 id="datasetdescription">Data Collection</h2>
+				We collected images from multiple sources. Internet sources include various image search engines(e.g. Baidu, Bing, Google, Picsearch,
+Altavista), social networks (e.g. weibo, facebook) and photo sharing communities (e.g. Flickr, nipic).
+Images from the Internet are distributed into 100 object classes in INSTRE-S2. Specially, in order to complete INSTRE-S1 and INSTRE-M, 
+we recorded 100 objects that were mainly discovered from the personal photos and meanwhile available at hand. 
+The 100 objects were reorganized semi-randomly into 50 groups (2-tuples), with 2 objects per group. For each group, one is required to 
+take over 100 photos respectively for each object and another 100 photos for their co-occurrence. In this way, photos for one group would
+give two classes in INSTRE-S1 and one mapped 2-tuple class in INSTRE-M. 30 people were involved
+in this photographing task and in order to have adequate distinct backgrounds,
+we selected 25 named sites in Beijing including outdoors (parks, zoos, wild fields, universities etc.) and
+indoors (museums, malls, exhibitions etc). Many other sites that were unnamed and common included
+streets, communities, homes, offices etc.
+<br/><br/>
+				<table cellpadding="0" cellspacing="0">
+					<thead>
+						<tr>
+							<th>Subset</th>
+							<th>Description</th>
+							<th>#Classes</th>
+							<th>#Images</th>
+						</tr>
+					</thead>
+					<tfoot>
+						<tr>
+							<th colspan="3">Three subsets are disjoint.</th>
+							<th>28543 images</th>
+						</tr>
+					</tfoot>
+					<tbody>
+						<tr>
+							<td><strong>INSTRE-S1</strong></td>
+							<td>images downloaded from multiple Internet sources</td>
+							<td>100</td>
+							<td>11011</td>
+						</tr>
+						<tr>
+							<td ><strong>INSTRE-S2</strong></td>
+							<td>photos recoding objects at hand (one object per photo)</td>
+							<td>100</td>
+							<td>12059</td>
+						</tr>
+						<tr>
+							<td><strong>INSTRE-M</strong></td>
+							<td>photos recoding objects at hand (two objects per photo)</td>
+							<td>50</td>
+							<td>5473</td>
+						</tr>
+					</tbody>	
+				</table>
+			
+						<!-- _________________________________________________________________ -->
+			<p>
+
+				<!--<p class="pullquote"><br/><br/>Binary masks<br/><br/></p>-->
+				<fieldset><legend><h2>Object Location Annotations</h2></legend>
+				
+				
+				<p class="justify">
+					Every image in this dataset is annotated with upright rectangular bounding box for each present object, whose coordinates are recorded in a <em>.txt</em> file.
+				</p>
+
+				<p>
+					Each image in <code>&lt;basedir&gt;/&lt;subset&gt;/&lt;class&gt;/&lt;file&gt;.jpg</code> has its annotation file
+					in <code>&lt;basedir&gt;/&lt;subset&gt;/&lt;class&gt;/&lt;file&gt;.txt</code>.
+				</p>
+
+				<p>
+					In each annotation file, each line records the coordinates of one bounding box in format: 
+					&lt;x of top-left point&gt;&lt;space&gt;&lt;y of top-left point&gt;&lt;space&gt;&lt;width&gt;&lt;space&gt;&lt;height&gt;.
+					All numbers are integers. 
+
+				</p>
+				
+				<p>
+				Specially, for each tuple-class in INSTRE-M, there are two corresponding object classes in INSTRE-S1. 
+				In each annotation file for a INSTRE-M image, the first line records the object labeled as [a] in INSTRE-S1 and the second line records the object labeled as [b] in INSTRE-S1.
+				</p>
+				</fieldset>
+			</p>
+			<div style="clear: left;"></div>
+
+			
+
+			<p>
+				<fieldset><legend><h2 id="cite">Related Paper</h2></legend>
+
+				<!-- <p>If you use this dataset in your work, please cite the following paper:</p> -->
+
+				<strong>INSTRE: a New Benchmark for Instance-Level Object Retrieval and Recognition</strong><br/>
+				<em>Shuang Wang, Shuqiang Jiang</em><br/>
+				ACM Transactions on Multimedia Computing, Communications and Applications. (under review) 2014.<br/>
+				
+				<!-- <a href="">[PDF]</a> -->
+
+				</fieldset>
+			</p>
+			<div style="clear: left;"></div>
+
+		
+
+			<!-- _________________________________________________________________ -->
+			<p>
+				<fieldset><legend><h2 id="contact">Contact</h2></legend>
+				<p>
+					If you have any questions, corrections or other issues, please contact
+					<a href="mailto://sqjiang@ict.ac.cn?subject=INSTRE issues">Shuqiang Jiang</a> (sqjiang[at]ict.ac.cn).
+				</p>
+				</fieldset>
+			</p>
+			<div style="clear: left;"></div>
+
+	<!-- _________________________________________________________________ -->
+		</div> <!-- end main -->
+	</div> <!-- end content -->
+	
+
+</div>
+</body>
+</html>

@@ -1,0 +1,3 @@
+timestamp,model_type,evaluated_images,iou_threshold,precision,recall,f1_score,mean_iou,map,matching_rate,total_detections,total_ground_truths,total_matched_pairs,unmatched_detections,unmatched_gts,num_classes,classes_perfect_score,classes_zero_score
+2025-07-18 17:39:15,pruned_network,50,0.5,0.17721518987341772,0.17721518987341772,0.17721518987341772,0.23539986143141015,0.11952861952861954,1.0,158,158,158,0,0,49,7,29
+2025-07-18 17:41:14,pruned_network,50,0.5,0.17721518987341772,0.17721518987341772,0.17721518987341772,0.23539986143141015,0.11952861952861954,1.0,158,158,158,0,0,49,7,29

@@ -1,0 +1,461 @@
+{
+  "overall_metrics": {
+    "precision": 0,
+    "recall": 0,
+    "f1_score": 0,
+    "map": 0.0,
+    "true_positives": 0,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "total_detections": 100,
+    "total_ground_truths": 167
+  },
+  "class_metrics": {
+    "1012": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 4
+    },
+    "1146": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "1161": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "416": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 3
+    },
+    "1016": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 1
+    },
+    "1": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 4
+    },
+    "409": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 4
+    },
+    "313": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 5
+    },
+    "672": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "44": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 8
+    },
+    "369": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 3
+    },
+    "775": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 10
+    },
+    "832": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 6
+    },
+    "645": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 1
+    },
+    "378": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "666": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 4
+    },
+    "396": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 6
+    },
+    "1115": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 6
+    },
+    "875": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "1068": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "406": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 3
+    },
+    "848": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 3
+    },
+    "571": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 1
+    },
+    "605": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "824": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "18": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 3
+    },
+    "1144": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "722": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "382": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "420": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 5
+    },
+    "688": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "861": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 1
+    },
+    "108": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "425": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 4
+    },
+    "359": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 1
+    },
+    "427": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 3
+    },
+    "882": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 4
+    },
+    "698": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 7
+    },
+    "219": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 2
+    },
+    "880": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 5
+    },
+    "401": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 1
+    },
+    "13": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 8
+    },
+    "413": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 1
+    },
+    "830": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 3
+    },
+    "681": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 4
+    },
+    "863": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 7
+    },
+    "765": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 3
+    },
+    "268": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 4
+    },
+    "368": {
+      "precision": 0,
+      "recall": 0,
+      "f1_score": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "total_gt": 3
+    }
+  },
+  "evaluation_params": {
+    "iou_threshold": 0.5,
+    "evaluated_images": 50,
+    "model_type": "pruned_network"
+  }
+}
